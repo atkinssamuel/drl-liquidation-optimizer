@@ -1,4 +1,4 @@
-name: multi-agent-rl-liquidation-optimizer
+name: drl-liquidation-optimizer
 dependencies:
   - python=3.8
   - numpy
