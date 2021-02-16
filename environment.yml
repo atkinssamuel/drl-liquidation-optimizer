@@ -1,0 +1,5 @@
+name: multi-agent-rl-liquidation-optimizer
+dependencies:
+  - python=3.8
+  - numpy
+  - matplotlib
