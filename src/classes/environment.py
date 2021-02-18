@@ -3,32 +3,68 @@ import matplotlib.pyplot as plt
 
 
 class TradingEnvironment:
+
     @staticmethod
     def sample_Xi():
         mu, sigma = 0, 1
         return np.random.normal(mu, sigma, 1)
 
-    def __init__(self, sigma=0.1, gamma=0.99, eta=0.6, epsilon=0.1, T=1000, N=1000, X=10000, P_init=500000):
-        # hyper-parameters
-        self.X = X
-        self.sigma = sigma
-        self.gamma = gamma
-        self.eta = eta
-        self.epsilon = epsilon
-        self.T = T
-        self.N = N
-        self.tau = T / N
+    """
+    Initial Parameters:
+    Real-World Example: Optimal Execution of Portfolio Transactions -  Robert Almgreny and Neil Chriss
+    - $50 current market price
+    - 30% volatility
+    - 10% expected annual rate of return
+    - 1/8 bid-ask spread
+    - 5 million share median daily trading volume    
+    - Trading year of 250 days
+    
+    The above settings yield the following sigma and alpha:
+    - daily volatility of 0.3/sqrt(250) = 0.019
+    - expected fractional return of 0.1/250 = 4 x 10^(-4) 
+    - to obtain parameters for sigma and alpha, we must scale by the price:
+        - sigma = 0.019 * 50
+        - alpha = 4 x 10^(-4) * 50 = 0.02
 
-        # data
-        self.step_array = np.arange(N)
-        self.P = np.zeros(shape=(N,))
-        self.P[0] = P_init
-        self.x = np.zeros(shape=(N,))
-        self.x[0] = X
-        self.n = np.zeros(shape=(N,))
+    - to choose epsilon, we divide the bid-ask spread by two: epsilon = 1/16
+    - to determine eta, we assume that for each one percent of the daily volume we trade, we incur a price impact equal 
+    to the bid-ask spread
+        - since we are trading at 5 million shares, we have (1/8) / (0.01 * 5 million) = 2.5 * 10^(-6)
+    
+    - price effects become "significant" when we sell 10% of the daily volume
+        - we suppose that "significant" means that the price depression is one bid-ask spread and that the effect is
+        linear for smaller and larger trading rates
+        - gamma = (1/8) /(0.1 * 5 million) = 2.5 * 10^(-7) 
+    """
+    def __init__(self):
+        initial_market_price = 50
+        volatility = 0.3
+        arr = 0.1
+        bid_ask = 1 / 8
+        daily_trading_volume = 5000000
+        yearly_trading_days = 250
+        daily_volatility = volatility / np.sqrt(volatility)
 
-        # other variables
+        self.T = 50
+        self.N = 50
+        self.tau = self.T / self.N
+        self.X = 10**6
+
+        self.sigma = daily_volatility * initial_market_price
+        self.alpha = arr / yearly_trading_days * initial_market_price
+        self.epsilon = bid_ask / 2
+        self.eta = bid_ask / (0.01 * daily_trading_volume)
+        self.gamma = bid_ask / (0.1 * daily_trading_volume)
+
+        self.step_array = np.arange(self.N)
+        self.P = np.zeros(shape=(self.N,))
+        self.P[0] = initial_market_price
+        self.x = np.zeros(shape=(self.N,))
+        self.x[0] = self.X
+        self.n = np.zeros(shape=(self.N,))
+
         self.k = 1
+
 
     def step(self, n=0):
         assert (self.k < self.N)
@@ -55,7 +91,8 @@ class TradingEnvironment:
         axes[1].plot(self.step_array * self.tau, self.x/thousand, color="orange")
         axes[1].set(ylabel="Inventory (k)")
 
-        axes[2].plot(self.step_array * self.tau, self.n, color="m")
+        # removed first value (may need to account for initial value)
+        axes[2].plot(self.step_array[1:] * self.tau, self.n[1:], color="m")
         axes[2].set(xlabel="Time", ylabel="Shares Sold/Iteration")
 
         for axis in axes.flat:
