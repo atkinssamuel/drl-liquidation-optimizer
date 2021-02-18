@@ -7,3 +7,4 @@
 **Update environment from environment.yml**:  
 *From base directory and after activating existing environment:*  
 ```conda env update --file ./environment.yml```
+
