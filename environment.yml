@@ -1,5 +1,9 @@
 name: drl-liquidation-optimizer
+channels:
+  - default
+  - conda-forge
 dependencies:
   - python=3.8
   - numpy
   - matplotlib
+  - pytorch
