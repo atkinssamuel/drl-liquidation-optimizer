@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 
 
 class TradingEnvironment:
-
     @staticmethod
     def sample_Xi():
         mu, sigma = 0, 1
@@ -37,40 +36,43 @@ class TradingEnvironment:
         - gamma = (1/8) /(0.1 * 5 million) = 2.5 * 10^(-7) 
     """
     def __init__(self):
-        initial_market_price = 50
+        self.initial_market_price = 50
+
         volatility = 0.3
         arr = 0.1
         bid_ask = 1 / 8
         daily_trading_volume = 5000000
         yearly_trading_days = 250
-        daily_volatility = volatility / np.sqrt(volatility)
+        daily_volatility = volatility / np.sqrt(yearly_trading_days)
 
-        self.T = 50
-        self.N = 50
+        self.T = 100
+        self.N = 100
         self.tau = self.T / self.N
         self.X = 10**6
 
-        self.sigma = daily_volatility * initial_market_price
-        self.alpha = arr / yearly_trading_days * initial_market_price
+        self.sigma = daily_volatility * self.initial_market_price
+        self.alpha = arr / yearly_trading_days * self.initial_market_price
         self.epsilon = bid_ask / 2
         self.eta = bid_ask / (0.01 * daily_trading_volume)
         self.gamma = bid_ask / (0.1 * daily_trading_volume)
+        self.lam = 2*10**(-6)
 
         self.step_array = np.arange(self.N)
         self.P = np.zeros(shape=(self.N,))
-        self.P[0] = initial_market_price
+        self.P[0] = self.initial_market_price
         self.x = np.zeros(shape=(self.N,))
         self.x[0] = self.X
         self.n = np.zeros(shape=(self.N,))
+        self.c = np.zeros(shape=(self.N,))
 
         self.k = 1
-
 
     def step(self, n=0):
         assert (self.k < self.N)
         self.n[self.k] = n
         self.step_inventory()
         self.step_price()
+        self.step_cash()
         self.k += 1
 
     def step_inventory(self):
@@ -80,20 +82,29 @@ class TradingEnvironment:
         self.P[self.k] = self.P[self.k - 1] + self.sigma * np.sqrt(self.tau) * self.sample_Xi() - self.gamma * self.n[
             self.k]
 
+    def step_cash(self):
+        self.c[self.k] = self.c[self.k-1] + self.P[self.k-1] * self.n[self.k]
+
     def plot_simulation(self):
-        fig, axes = plt.subplots(3, figsize=(14, 10))
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         fig.suptitle("Simulation Plot")
 
         thousand = 1000
-        axes[0].plot(self.step_array * self.tau, self.P/thousand)
-        axes[0].set(ylabel="Price ($k)")
+        axes[0, 0].plot(self.step_array * self.tau, self.P)
+        axes[0, 0].set(ylabel="Price")
 
-        axes[1].plot(self.step_array * self.tau, self.x/thousand, color="orange")
-        axes[1].set(ylabel="Inventory (k)")
+        axes[0, 1].plot(self.step_array * self.tau, self.c, label="Cash Balance")
+        axes[0, 1].plot(self.step_array * self.tau, np.ones(self.N,) * self.initial_market_price * self.X,
+                        label="Portfolio Value")
+        axes[0, 1].legend()
+        axes[0, 1].set(ylabel="Balance ($k)")
 
         # removed first value (may need to account for initial value)
-        axes[2].plot(self.step_array[1:] * self.tau, self.n[1:], color="m")
-        axes[2].set(xlabel="Time", ylabel="Shares Sold/Iteration")
+        axes[1, 0].plot(self.step_array[1:] * self.tau, self.n[1:], color="m")
+        axes[1, 0].set(xlabel="Time", ylabel="Shares Sold/Iteration")
+
+        axes[1, 1].plot(self.step_array * self.tau, self.x/thousand, color="orange")
+        axes[1, 1].set(ylabel="Inventory (k)")
 
         for axis in axes.flat:
             axis.grid(True)
