@@ -3,8 +3,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
-from src.classes.environment import TradingEnvironment
-
+from src.classes.environments import AlmgrenChrissEnvironment
+from datetime import datetime
 
 class DDPGActor(torch.nn.Module):
     def __init__(self, DDPG):
@@ -13,23 +13,21 @@ class DDPGActor(torch.nn.Module):
         # observation = [rk - 2, rk - 1, rk, mk, lk] -> size(observation) = (D + 1) + 1 + 1 = D + 3
         input_size = DDPG.D + 3
         hidden_layer_size = 2 * input_size
-        hidden_layer_size_2 = 2 * hidden_layer_size
         # output = action
         output_size = 1
 
         self.fc1 = torch.nn.Linear(input_size, hidden_layer_size)
         self.fc2 = torch.nn.Linear(hidden_layer_size, output_size)
-        # self.fc3 = torch.nn.Linear(hidden_layer_size_2, output_size)
 
         self.relu = torch.nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
+        self.tanh = torch.nn.Tanh()
+
 
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
-        # x = self.relu(x)
-        # x = self.fc3(x)
         x = self.sigmoid(x)
         return x
 
@@ -40,27 +38,25 @@ class DDPGCritic(torch.nn.Module):
         # input = observation, action
         # observation = [rk-D, ..., rk, mk, lk]
         # observation example for D = 2: [rk - 2, rk - 1, rk, mk, lk] -> size(observation) = (D + 1) + 1 + 1 = D + 3
-        # size(observation) + size(action) = (DDPG.D + 3) + 1
-        input_size = (DDPG.D + 3) + 1
+        # size(observation) = (DDPG.D + 3)
+        input_size = (DDPG.D + 3)
         hidden_layer_size = 2 * input_size
-        hidden_layer_size_2 = 2 * hidden_layer_size
+        hidden_layer_2_size = (hidden_layer_size + 1) * 2
         # output = Q-value for observation-action pair
         output_size = 1
 
         self.fc1 = torch.nn.Linear(input_size, hidden_layer_size)
-        self.fc2 = torch.nn.Linear(hidden_layer_size, output_size)
-        # self.fc3 = torch.nn.Linear(hidden_layer_size_2, output_size)
+        self.fc2 = torch.nn.Linear(hidden_layer_size + 1, hidden_layer_2_size)
+        self.fc3 = torch.nn.Linear(hidden_layer_2_size, output_size)
 
         self.relu = torch.nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
 
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.fc2(x)
-        # x = self.relu(x)
-        # x = self.fc3(x)
-        # x = self.sigmoid(x)
+    def forward(self, state, action):
+        x1 = self.relu(self.fc1(state))
+        x = torch.cat((x1, action), dim=1)
+        x = self.relu(self.fc2(x))
+        x = self.sigmoid(self.fc3(x))
         return x
 
 
@@ -68,11 +64,11 @@ class DDPG:
     @staticmethod
     def layer_init_callback(layer):
         if type(layer) == torch.nn.Linear:
-            torch.nn.init.xavier_uniform(layer.weight)
+            torch.nn.init.xavier_uniform_(layer.weight)
             layer.bias.data.fill_(0.01)
 
     def __init__(self):
-        self.environment = TradingEnvironment()
+        self.environment = AlmgrenChrissEnvironment()
         self.D = 5
         self.lr = 0.3
         self.a = None
@@ -82,16 +78,16 @@ class DDPG:
         self.B_action = None
         self.B_R = None
         self.B_obs = None
-        self.batch_size = 32
-        self.M = 5
+        self.batch_size = 256
+        self.M = 10
         self.R = 0
 
-        self.criticLR = 0.001
+        self.criticLR = 0.000001
         self.critic = DDPGCritic(self).apply(self.layer_init_callback)
         self.critic_target = DDPGCritic(self).apply(self.layer_init_callback)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.criticLR)
 
-        self.actorLR = 0.001
+        self.actorLR = 0.000001
         self.actor = DDPGActor(self).apply(self.layer_init_callback)
         self.actor_target = DDPGActor(self).apply(self.layer_init_callback)
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actorLR)
@@ -99,7 +95,6 @@ class DDPG:
     def update_networks(self, current, target):
         for current_parameter, target_parameter in zip(current.parameters(), target.parameters()):
             target_parameter.data.copy_(self.lr * current_parameter.data * (1.0 - self.lr) * target_parameter.data)
-
 
     def get_r(self):
         self.observation[:self.D] = self.observation[1:self.D + 1]
@@ -174,8 +169,9 @@ class DDPG:
     def run_ddpg(self):
         critic_losses = []
         actor_losses = []
+        is_list = []
         for i in range(self.M):
-            self.environment = TradingEnvironment()
+            self.environment = AlmgrenChrissEnvironment()
             for k in range(self.environment.N - 1):
                 observation_tensor = torch.FloatTensor(self.observation)
                 noise = torch.FloatTensor(np.random.normal(0, 0.1, 1))
@@ -192,8 +188,8 @@ class DDPG:
 
                 # critic updates
                 best_actions = self.actor_target(observations)
-                y = rewards + self.environment.gamma * self.critic_target(torch.cat((observations, best_actions), 1))
-                critic_loss = F.mse_loss(self.critic(torch.cat((observations, actions), 1)), y)
+                y = rewards + self.environment.gamma * self.critic_target(observations, best_actions)
+                critic_loss = F.mse_loss(self.critic(observations, actions), y)
                 critic_losses.append(critic_loss.detach().numpy())
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward(retain_graph=True)
@@ -201,7 +197,7 @@ class DDPG:
 
                 # actor updates
                 actor_predictions = self.actor_target(observations)
-                actor_loss = -self.critic(torch.cat((observations, actor_predictions), 1)).mean()
+                actor_loss = -self.critic(observations, actor_predictions).mean()
                 actor_losses.append(actor_loss.detach().numpy())
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
@@ -209,7 +205,15 @@ class DDPG:
 
                 self.update_networks(self.critic, self.critic_target)
                 self.update_networks(self.actor, self.actor_target)
+
             print(f"Episode {i} ({round(i/self.M*100, 2)}%)")
+
+            implementation_shortfall = self.environment.c[-1] - self.environment.initial_market_price * \
+                                       self.environment.X
+            is_list.append(implementation_shortfall)
+            print(f"Implementation Shortfall = {implementation_shortfall}\n")
+
+        date_str = str(datetime.now())[2:10] + "_" + str(datetime.now())[11:13] + "-" + str(datetime.now())[14:16]
 
         fig, axes = plt.subplots(2, figsize=(14, 10))
 
@@ -224,6 +228,13 @@ class DDPG:
 
         for axis in axes.flat:
             axis.grid(True)
+        plt.savefig(f"../results/losses/losses-{date_str}.png")
+        plt.clf()
 
-        plt.show()
-
+        a_million = 1000000
+        plt.plot(np.arange(len(is_list)), np.array(is_list)/a_million)
+        plt.title("Implementation Shortfall")
+        plt.xlabel("Episode")
+        plt.ylabel("Implementation Shortfall ($M)")
+        plt.grid(True)
+        plt.savefig(f"../results/implementation-shortfall/implementation_shortfall-{date_str}.png")

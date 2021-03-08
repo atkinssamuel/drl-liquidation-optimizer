@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-class TradingEnvironment:
+class AlmgrenChrissEnvironment:
     @staticmethod
     def sample_Xi():
         mu, sigma = 0, 1
@@ -45,8 +45,8 @@ class TradingEnvironment:
         yearly_trading_days = 250
         daily_volatility = volatility / np.sqrt(yearly_trading_days)
 
-        self.T = 100
-        self.N = 100
+        self.T = 60
+        self.N = 60
         self.tau = self.T / self.N
         self.X = 10**6
 
@@ -110,3 +110,81 @@ class TradingEnvironment:
             axis.grid(True)
 
         plt.show()
+
+
+class JaimungalEnvironment:
+    def __init__(self):
+        '''
+        Main environment variables:
+        v_t - trading rate = the speed at which the agent is liquidating or acquiring shares (the control in the RL
+        context)
+        Q_t - agent's inventory
+        S_t - the mid-price process
+        S_hat_t - execution price process = the price at which the agent can sell or purchase the asset (execution
+        price)
+        X_t - agent's cash process
+
+        Variable DEs:
+        dQ_t = -v_t * dt, Q_0 = q
+        dS_t = -g(v_t) * dt + sigma * dW_t, S_0 = S
+        (W_t is standard Brownian motion, g is the permanent price impact function)
+        S_hat_t = S_t - (1/2 * delta + f(v_t)), S_hat_0 = S_hat
+        (delta is the bid-ask spread, f is the temporary price impact function)
+        dX_t = S_hat_t * v_t * dt, X_0 = x
+
+        Impact Functions:
+        f(u) = ku
+        g(u) = bu
+        '''
+        self.k = 0.1
+        self.b = 0.1
+
+        # bid-ask spread
+        self.delta = 1/8
+
+        self.q = 10 ** 6
+        self.S_init = 50
+        self.X_init = 0
+
+        # next up: design DEs and step processes
+
+        ###########################
+
+        self.initial_market_price = 50
+
+        volatility = 0.3
+        arr = 0.1
+        bid_ask = 1 / 8
+        daily_trading_volume = 5000000
+        yearly_trading_days = 250
+        daily_volatility = volatility / np.sqrt(yearly_trading_days)
+
+        self.T = 60
+        self.N = 60
+        self.tau = self.T / self.N
+        self.X = 10 ** 6
+
+        self.sigma = daily_volatility * self.initial_market_price
+        self.alpha = arr / yearly_trading_days * self.initial_market_price
+        self.epsilon = bid_ask / 2
+        self.eta = bid_ask / (0.01 * daily_trading_volume)
+        self.gamma = bid_ask / (0.1 * daily_trading_volume)
+        self.lam = 2 * 10 ** (-6)
+
+        self.step_array = np.arange(self.N)
+        self.P = np.zeros(shape=(self.N,))
+        self.P[0] = self.initial_market_price
+        self.x = np.zeros(shape=(self.N,))
+        self.x[0] = self.X
+        self.n = np.zeros(shape=(self.N,))
+        self.c = np.zeros(shape=(self.N,))
+
+        self.k = 1
+
+    # temporary price impact (f)
+    def f(self, v):
+        return self.k * v
+
+    # permanent price impact (g)
+    def g(self, v):
+        return self.b * v
