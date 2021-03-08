@@ -1,23 +1,25 @@
 import numpy as np
 import torch
-
+import torch.nn.functional as F
+import torch.optim as optim
+import matplotlib.pyplot as plt
 from src.classes.environment import TradingEnvironment
 
-class DDPGActor(torch.nn.Module):
-    def __init__(self, environment):
-        super(DDPGActor, self).__init__()
 
+class DDPGActor(torch.nn.Module):
+    def __init__(self, DDPG):
+        super(DDPGActor, self).__init__()
         # input = observation
-        # observation = [r1, ..., rk, mk, lk] = k + 2 -> max(size(observation)) = N + 2
-        input_size = environment.N + 2
+        # observation = [rk - 2, rk - 1, rk, mk, lk] -> size(observation) = (D + 1) + 1 + 1 = D + 3
+        input_size = DDPG.D + 3
         hidden_layer_size = 2 * input_size
         hidden_layer_size_2 = 2 * hidden_layer_size
         # output = action
         output_size = 1
 
         self.fc1 = torch.nn.Linear(input_size, hidden_layer_size)
-        self.fc2 = torch.nn.Linear(hidden_layer_size, hidden_layer_size_2)
-        self.fc3 = torch.nn.Linear(hidden_layer_size_2, output_size)
+        self.fc2 = torch.nn.Linear(hidden_layer_size, output_size)
+        # self.fc3 = torch.nn.Linear(hidden_layer_size_2, output_size)
 
         self.relu = torch.nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
@@ -26,26 +28,28 @@ class DDPGActor(torch.nn.Module):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
-        x = self.relu(x)
-        x = self.fc3(x)
+        # x = self.relu(x)
+        # x = self.fc3(x)
         x = self.sigmoid(x)
         return x
 
 
 class DDPGCritic(torch.nn.Module):
-    def __init__(self, environment):
+    def __init__(self, DDPG):
         super(DDPGCritic, self).__init__()
         # input = observation, action
-        # observation = [r1, ..., rk, mk, lk] = k + 2 -> max(size(observation)) = N + 2
-        input_size = (environment.N + 2) + 1
+        # observation = [rk-D, ..., rk, mk, lk]
+        # observation example for D = 2: [rk - 2, rk - 1, rk, mk, lk] -> size(observation) = (D + 1) + 1 + 1 = D + 3
+        # size(observation) + size(action) = (DDPG.D + 3) + 1
+        input_size = (DDPG.D + 3) + 1
         hidden_layer_size = 2 * input_size
         hidden_layer_size_2 = 2 * hidden_layer_size
         # output = Q-value for observation-action pair
         output_size = 1
 
         self.fc1 = torch.nn.Linear(input_size, hidden_layer_size)
-        self.fc2 = torch.nn.Linear(hidden_layer_size, hidden_layer_size_2)
-        self.fc3 = torch.nn.Linear(hidden_layer_size_2, output_size)
+        self.fc2 = torch.nn.Linear(hidden_layer_size, output_size)
+        # self.fc3 = torch.nn.Linear(hidden_layer_size_2, output_size)
 
         self.relu = torch.nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
@@ -54,9 +58,9 @@ class DDPGCritic(torch.nn.Module):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
-        x = self.relu(x)
-        x = self.fc3(x)
-        x = self.sigmoid(x)
+        # x = self.relu(x)
+        # x = self.fc3(x)
+        # x = self.sigmoid(x)
         return x
 
 
@@ -69,36 +73,55 @@ class DDPG:
 
     def __init__(self):
         self.environment = TradingEnvironment()
+        self.D = 5
         self.lr = 0.3
-        self.r = []
-        self.m = 1
-        self.l = 1
         self.a = None
-        self.observation = np.zeros(shape=(self.environment.N + 2,))
-        self.B = []
-        self.M = 100
+        self.observation = np.zeros(shape=(self.D + 3))
+        self.observation[self.D + 1:] = [1, 1]
+        self.B_prev_obs = None
+        self.B_action = None
+        self.B_R = None
+        self.B_obs = None
+        self.batch_size = 32
+        self.M = 5
+        self.R = 0
 
-        self.critic = DDPGCritic(self.environment).apply(self.layer_init_callback)
-        self.target = DDPGCritic(self.environment).apply(self.layer_init_callback)
+        self.criticLR = 0.001
+        self.critic = DDPGCritic(self).apply(self.layer_init_callback)
+        self.critic_target = DDPGCritic(self).apply(self.layer_init_callback)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.criticLR)
 
-        self.actor = DDPGActor(self.environment).apply(self.layer_init_callback)
+        self.actorLR = 0.001
+        self.actor = DDPGActor(self).apply(self.layer_init_callback)
+        self.actor_target = DDPGActor(self).apply(self.layer_init_callback)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actorLR)
 
-    def update_r(self):
-        self.r.append(np.log(self.environment.P[self.environment.k] / self.environment.P[self.environment.k - 1]))
+    def update_networks(self, current, target):
+        for current_parameter, target_parameter in zip(current.parameters(), target.parameters()):
+            target_parameter.data.copy_(self.lr * current_parameter.data * (1.0 - self.lr) * target_parameter.data)
 
-    def update_m(self):
-        self.m = (self.environment.k * self.environment.tau) / self.environment.N
 
-    def update_l(self):
-        self.l = self.environment.x[self.environment.k] / self.environment.X
+    def get_r(self):
+        self.observation[:self.D] = self.observation[1:self.D + 1]
+        self.observation[self.D] = np.log(self.environment.P[self.environment.k - 1] /
+                                          self.environment.P[self.environment.k - 2])
 
-    def update_state(self):
-        self.update_r()
-        self.update_m()
-        self.update_l()
+    def get_m(self):
+        self.observation[-2] = (self.environment.N - (
+                    self.environment.k - 1) * self.environment.tau) / self.environment.N
 
-    def get_observation(self):
-        self.observation = [self.r, self.m, self.l]
+    def get_l(self):
+        self.observation[-1] = self.environment.x[self.environment.k - 1] / self.environment.X
+
+    def update_observation(self):
+        self.get_r()
+        self.get_m()
+        self.get_l()
+
+    def step(self, a):
+        num_shares = a * self.environment.x[self.environment.k - 1]
+        self.environment.step(num_shares)
+        self.update_observation()
 
     def compute_h(self):
         return self.environment.epsilon * np.sign(self.environment.n) + self.environment.eta / self.environment.tau \
@@ -117,15 +140,90 @@ class DDPG:
     def compute_U(self):
         return self.compute_E() + self.environment.lam * self.compute_V()
 
-    def compute_reward(self):
-        return
+    def get_reward(self):
+        self.R = self.R - self.compute_U()
 
+    def test_implementation(self):
+        for k in range(self.environment.N - 1):
+            self.step(0.5)
+        self.environment.plot_simulation()
 
+    def add_transition(self, prev_obs):
+        B_prev_obs = torch.FloatTensor(prev_obs).reshape((1, -1))
+        B_action = self.a.reshape((1, -1))
+        B_R = torch.FloatTensor([self.R]).reshape((1, -1))
+        B_obs = torch.FloatTensor(self.observation).reshape((1, -1))
+
+        if self.B_obs is None:
+            self.B_prev_obs = B_prev_obs
+            self.B_action = B_action
+            self.B_R = B_R
+            self.B_obs = B_obs
+            return
+
+        self.B_prev_obs = torch.cat((self.B_prev_obs, B_prev_obs), 0)
+        self.B_action = torch.cat((self.B_action, B_action), 0)
+        self.B_R = torch.cat((self.B_R, B_R), 0)
+        self.B_obs = torch.cat((self.B_obs, B_obs), 0)
+
+    def sample_transitions(self, N):
+        transition_indices = np.random.choice(self.B_obs.shape[0], N)
+        return self.B_prev_obs[transition_indices], self.B_action[transition_indices], self.B_R[transition_indices], \
+               self.B_obs[transition_indices]
 
     def run_ddpg(self):
+        critic_losses = []
+        actor_losses = []
         for i in range(self.M):
             self.environment = TradingEnvironment()
-            for k in range(self.environment.N):
-                self.get_observation()
-                # action = self.actor()
-        print("Hello World")
+            for k in range(self.environment.N - 1):
+                observation_tensor = torch.FloatTensor(self.observation)
+                noise = torch.FloatTensor(np.random.normal(0, 0.1, 1))
+                self.a = self.actor_target(observation_tensor) + noise
+                prev_obs = self.observation
+                self.get_reward()
+                self.step(self.a)
+                self.add_transition(prev_obs)
+
+                if self.B_obs.shape[0] < self.batch_size:
+                    continue
+
+                prev_observations, actions, rewards, observations = self.sample_transitions(self.batch_size)
+
+                # critic updates
+                best_actions = self.actor_target(observations)
+                y = rewards + self.environment.gamma * self.critic_target(torch.cat((observations, best_actions), 1))
+                critic_loss = F.mse_loss(self.critic(torch.cat((observations, actions), 1)), y)
+                critic_losses.append(critic_loss.detach().numpy())
+                self.critic_optimizer.zero_grad()
+                critic_loss.backward(retain_graph=True)
+                self.critic_optimizer.step()
+
+                # actor updates
+                actor_predictions = self.actor_target(observations)
+                actor_loss = -self.critic(torch.cat((observations, actor_predictions), 1)).mean()
+                actor_losses.append(actor_loss.detach().numpy())
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
+
+                self.update_networks(self.critic, self.critic_target)
+                self.update_networks(self.actor, self.actor_target)
+            print(f"Episode {i} ({round(i/self.M*100, 2)}%)")
+
+        fig, axes = plt.subplots(2, figsize=(14, 10))
+
+        axes[0].plot(np.arange(len(critic_losses)), critic_losses)
+        axes[0].set(title="Critic Loss")
+        axes[0].set(ylabel="MSE Loss")
+
+        axes[1].plot(np.arange(len(actor_losses)), actor_losses)
+        axes[1].set(title="Actor Loss")
+        axes[1].set(ylabel="MSE Loss")
+        axes[1].set(xlabel="Update Iteration")
+
+        for axis in axes.flat:
+            axis.grid(True)
+
+        plt.show()
+
