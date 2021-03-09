@@ -9,5 +9,6 @@
 ```conda env update --file ./environment.yml```
 
 ## Current Goals
-1. Finish DDPG implementation and benchmark it with current solution
-2. Modify formulation to produce a new agent consistent with 5.2.2 of the HFT book (119 of .pdf)
+1. Get Jaimungal environment working with chosen parameters
+2. Calculate objective function for Jaimungal environment
+3. Simulate M trials for Jaimungal environment and benchmark TWAP with optimal strategy
