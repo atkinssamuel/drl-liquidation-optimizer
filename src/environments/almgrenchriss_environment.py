@@ -7,7 +7,7 @@ from src.helpers import sample_Xi
 class AlmgrenChrissEnvironment:
     """
     Initial Parameters:
-    Real-World Example: Optimal Execution of Portfolio Transactions -  Robert Almgreny and Neil Chriss
+    Real-World Example: Optimal Execution of Portfolio Transactions -  Robert Almgren and Neil Chriss
     - $50 current market price
     - 30% volatility
     - 10% expected annual rate of return
@@ -34,6 +34,9 @@ class AlmgrenChrissEnvironment:
     """
 
     def __init__(self):
+        """
+        parameter and state initialization
+        """
         self.initial_market_price = 50
 
         volatility = 0.3
@@ -66,6 +69,11 @@ class AlmgrenChrissEnvironment:
         self.k = 1
 
     def step(self, n=0):
+        """
+        sets the control at the current time step to n and steps the state forward
+        :param n: float [0, 1]
+        :return: None
+        """
         assert (self.k < self.N)
         self.n[self.k] = n
         self.step_inventory()
@@ -74,16 +82,32 @@ class AlmgrenChrissEnvironment:
         self.k += 1
 
     def step_inventory(self):
+        """
+        steps the inventory forward
+        :return: None
+        """
         self.x[self.k] = self.x[self.k - 1] - self.n[self.k]
 
     def step_price(self):
+        """
+        steps the price forward
+        :return: None
+        """
         self.P[self.k] = self.P[self.k - 1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - self.gamma * self.n[
             self.k]
 
     def step_cash(self):
+        """
+        steps the cash process forward
+        :return: None
+        """
         self.c[self.k] = self.c[self.k - 1] + self.P[self.k - 1] * self.n[self.k]
 
     def plot_simulation(self):
+        """
+        plots the price dynamics, cash balance, control, and inventory
+        :return: None
+        """
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         fig.suptitle("Simulation Plot")
 
