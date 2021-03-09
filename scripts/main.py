@@ -1,6 +1,5 @@
-from src.classes.ddpg import DDPG
-from datetime import datetime
-from src.classes.environments import JaimungalEnvironment
+from src.ddpg import DDPG
+from src.environments.jaimungal_environment import JaimungalEnvironment
 
 if __name__ == "__main__":
     jenv = JaimungalEnvironment()
