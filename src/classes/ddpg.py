@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from src.classes.environments import AlmgrenChrissEnvironment
 from datetime import datetime
 
+
 class DDPGActor(torch.nn.Module):
     def __init__(self, DDPG):
         super(DDPGActor, self).__init__()
