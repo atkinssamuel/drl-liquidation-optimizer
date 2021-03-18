@@ -9,6 +9,4 @@
 ```conda env update --file ./environment.yml```
 
 ## Current Goals
-1. Get Jaimungal environment working with chosen parameters
-2. Calculate objective function for Jaimungal environment
-3. Simulate M trials for Jaimungal environment and benchmark TWAP with optimal strategy
+1. Strip Jaimungal implementation
