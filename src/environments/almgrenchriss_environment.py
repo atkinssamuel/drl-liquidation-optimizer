@@ -35,7 +35,7 @@ class AlmgrenChrissEnvironment:
 
     def __init__(self):
         """
-        parameter and state initialization
+        Parameter and state initialization
         """
         self.initial_market_price = 50
 
@@ -70,12 +70,12 @@ class AlmgrenChrissEnvironment:
 
     def step(self, n=0):
         """
-        sets the control at the current time step to n and steps the state forward
+        Sets the control at the previous time step to n and steps the state forward
         :param n: float [0, 1]
         :return: None
         """
         assert (self.k < self.N)
-        self.n[self.k] = n
+        self.n[self.k-1] = n
         self.step_inventory()
         self.step_price()
         self.step_cash()
@@ -83,53 +83,68 @@ class AlmgrenChrissEnvironment:
 
     def step_inventory(self):
         """
-        steps the inventory forward
+        Steps the inventory forward:
+
+        X_k = X_k-1 - n_k-1
+
         :return: None
         """
-        self.x[self.k] = self.x[self.k - 1] - self.n[self.k]
+        self.x[self.k] = self.x[self.k - 1] - self.n[self.k-1]
 
     def step_price(self):
         """
-        steps the price forward
+        Steps the price forward:
+
+        P_k = P_k-1 + sigma * sqrt(tau) * W - gamma * n_k-1
+
+        next price = previous price + noise from random walk process - permanent price impact
+
         :return: None
         """
         self.P[self.k] = self.P[self.k - 1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - self.gamma * self.n[
-            self.k]
+            self.k-1]
 
     def step_cash(self):
         """
-        steps the cash process forward
+        Steps the cash process forward:
+
+        C_k = C_k-1 + P_k-1 * n_k
+
         :return: None
         """
-        self.c[self.k] = self.c[self.k - 1] + self.P[self.k - 1] * self.n[self.k]
+        self.c[self.k] = self.c[self.k - 1] + self.P[self.k - 1] * self.n[self.k-1]
 
-    def plot_simulation(self):
+    def plot_simulation(self, save_path=None):
         """
-        plots the price dynamics, cash balance, control, and inventory
+        Plots the price dynamics, cash balance, control, and inventory
         :return: None
         """
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         fig.suptitle("Simulation Plot")
 
-        thousand = 1000
+        a_thousand = 1000
+        a_million = 1000000
         axes[0, 0].plot(self.step_array * self.tau, self.P)
         axes[0, 0].set(ylabel="Price")
 
-        axes[0, 1].plot(self.step_array * self.tau, self.c, label="Cash Balance")
-        axes[0, 1].plot(self.step_array * self.tau, np.ones(self.N, ) * self.initial_market_price * self.X,
+        axes[0, 1].plot(self.step_array * self.tau, self.c / a_million, label="Cash Balance")
+        axes[0, 1].plot(self.step_array * self.tau, np.ones(self.N, ) * self.initial_market_price * self.X / a_million,
                         label="Portfolio Value")
         axes[0, 1].legend()
-        axes[0, 1].set(ylabel="Balance ($k)")
+        axes[0, 1].set(ylabel="Balance ($M)")
 
         # removed first value (may need to account for initial value)
         axes[1, 0].plot(self.step_array[1:] * self.tau, self.n[1:], color="m")
         axes[1, 0].set(xlabel="Time", ylabel="Shares Sold/Iteration")
 
-        axes[1, 1].plot(self.step_array * self.tau, self.x / thousand, color="orange")
+        axes[1, 1].plot(self.step_array * self.tau, self.x / a_thousand, color="orange")
         axes[1, 1].set(ylabel="Inventory (k)")
 
         for axis in axes.flat:
             axis.grid(True)
 
-        plt.show()
-
+        if save_path is not None:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+        plt.clf()

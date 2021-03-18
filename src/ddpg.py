@@ -3,6 +3,8 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
+
+from src.constants import Directories
 from src.environments.almgrenchriss_environment import AlmgrenChrissEnvironment
 from datetime import datetime
 
@@ -13,7 +15,7 @@ class DDPG:
     @staticmethod
     def layer_init_callback(layer):
         """
-        callback function for Xavier layer initialization
+        Callback function for Xavier layer initialization
         :param layer: torch.nn.Linear
         :return: None
         """
@@ -23,7 +25,7 @@ class DDPG:
 
     def __init__(self):
         """
-        parameter and state, observation, and action initialization
+        Initializes the parameters and the state, observation, and action vectors
         """
         # initializing a new environment
         self.environment = AlmgrenChrissEnvironment()
@@ -31,11 +33,18 @@ class DDPG:
         # hyper-parameters
         self.D = 5
         self.lr = 0.3
-        self.batch_size = 256
-        self.M = 10
-        self.R = 0
-        self.criticLR = 0.000001
-        self.actorLR = 0.000001
+        self.batch_size = 1024
+        self.checkpoint_frequency = 20
+        # number of episodes
+        self.M = 200
+        # reward
+        self.R = None
+        self.criticLR = 0.00001
+        self.actorLR = 0.00001
+
+        # plotting parameters
+        # moving average length
+        self.ma_length = 100
 
         # action, observation, and replay buffer initialization
         self.a = None
@@ -45,6 +54,7 @@ class DDPG:
         self.B_action = None
         self.B_R = None
         self.B_obs = None
+        self.U = np.zeros(shape=(self.environment.N,))
 
         # critic network initialization
         self.critic = DDPGCritic(self).apply(self.layer_init_callback)
@@ -58,7 +68,7 @@ class DDPG:
 
     def update_networks(self, current, target):
         """
-        updates the parameters in the target network using the parameters from the current network
+        Updates the parameters in the target network using the parameters from the current network
         :param current: current network
         :param target: target network
         :return: None
@@ -68,8 +78,8 @@ class DDPG:
 
     def get_r(self):
         """
-        slide the r vector left in the observation vector and set the r_kth element in the observation vector to
-         the log return at k-1
+        Slides the r vector left in the observation vector and sets the r_kth element in the observation vector to
+        the log return at k-1
         :return: None
         """
         self.observation[:self.D] = self.observation[1:self.D + 1]
@@ -78,7 +88,7 @@ class DDPG:
 
     def get_m(self):
         """
-        set the -2nd element in the observation vector to the m state value
+        Sets the -2nd element in the observation vector to the m state value
         :return: None
         """
         self.observation[-2] = (self.environment.N - (
@@ -86,14 +96,14 @@ class DDPG:
 
     def get_l(self):
         """
-        set the last element in the observation vector to the l state value
+        Sets the last element in the observation vector to the l state value:
         :return: None
         """
         self.observation[-1] = self.environment.x[self.environment.k - 1] / self.environment.X
 
     def update_observation(self):
         """
-        update the observation vector using the above update equations
+        Updates the observation vector using the previously defined "get" equations
         :return: None
         """
         self.get_r()
@@ -102,7 +112,7 @@ class DDPG:
 
     def step(self, a):
         """
-        step the simulation forward using the action a
+        Steps the simulation forward using the action, a
         :param a: action
         :return: None
         """
@@ -112,7 +122,10 @@ class DDPG:
 
     def compute_h(self):
         """
-        computes the h value for the E function
+        Computes and returns the h value for the E function:
+
+        h(n_k/tau) = epsilon * sgn(n_k) + eta / tau * n_k
+
         :return: float
         """
         return self.environment.epsilon * np.sign(self.environment.n) + self.environment.eta / self.environment.tau \
@@ -120,39 +133,51 @@ class DDPG:
 
     def compute_V(self):
         """
-        computes the V value for the reward function
+        Computes and returns the V value for the reward function:
+
+        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
+        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
+
         :return: float
         """
-        return np.square(self.environment.sigma) * \
-               self.environment.tau * sum(np.square(self.environment.x))
+        return np.square(self.environment.sigma) * self.environment.tau * sum(np.square(self.environment.x))
 
     def compute_E(self):
         """
-        computes the E value for the reward function
+        Computes and returns the E value for the reward function:
+
+        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
+        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
+
         :return: float
         """
         E_1 = self.environment.gamma * sum(np.multiply(self.environment.x, self.environment.n))
-        h = self.compute_h()
-        E_2 = sum(np.multiply(self.environment.n, h))
+        E_2 = sum(np.multiply(self.environment.n, self.compute_h()))
         return E_1 + E_2
 
     def compute_U(self):
         """
-        comptues the U value [E + lambda * V]
-        :return: float
+        Computes the U value and stores it in the U vector:
+
+        U = E + lambda * V
+
+        :return: None
         """
-        return self.compute_E() + self.environment.lam * self.compute_V()
+        self.U[self.environment.k] = self.compute_E() + self.environment.lam * self.compute_V()
 
     def get_reward(self):
         """
-        computes the reward and stores it in self.R
+        Computes the reward and stores it in self.R:
+
+        R = U[k-1] - U[k]
+
         :return: None
         """
-        self.R = self.R - self.compute_U()
+        self.R = self.U[self.environment.k-1] - self.U[self.environment.k]
 
     def test_implementation(self):
         """
-        test implementation that steps the agent by selling half of the shares at each time-step
+        Test implementation that steps the agent by selling half of the shares at each time-step
         :return: None
         """
         for k in range(self.environment.N - 1):
@@ -161,14 +186,14 @@ class DDPG:
 
     def add_transition(self, prev_obs):
         """
-        saves an observation transition as a tensor in the self.B_ vectors
+        Saves an observation transition as numpy arrays in the self.B_ vectors
         :param prev_obs: the previous observation
         :return: None
         """
-        B_prev_obs = torch.FloatTensor(prev_obs).reshape((1, -1))
+        B_prev_obs = prev_obs.reshape((1, -1))
         B_action = self.a.reshape((1, -1))
-        B_R = torch.FloatTensor([self.R]).reshape((1, -1))
-        B_obs = torch.FloatTensor(self.observation).reshape((1, -1))
+        B_R = self.R.reshape((1, -1))
+        B_obs = self.observation.reshape((1, -1))
 
         if self.B_obs is None:
             self.B_prev_obs = B_prev_obs
@@ -177,14 +202,14 @@ class DDPG:
             self.B_obs = B_obs
             return
 
-        self.B_prev_obs = torch.cat((self.B_prev_obs, B_prev_obs), 0)
-        self.B_action = torch.cat((self.B_action, B_action), 0)
-        self.B_R = torch.cat((self.B_R, B_R), 0)
-        self.B_obs = torch.cat((self.B_obs, B_obs), 0)
+        self.B_prev_obs = np.vstack((self.B_prev_obs, B_prev_obs))
+        self.B_action = np.vstack((self.B_action, B_action))
+        self.B_R = np.vstack((self.B_R, B_R))
+        self.B_obs = np.vstack((self.B_obs, B_obs))
 
     def sample_transitions(self, N):
         """
-        samples N transitions from the replay buffer vectors (B_) and returns them as tuples
+        Samples N transitions from the replay buffer vectors (B_) and returns them as a tuple
         :param N: number of transitions to sample
         :return: None
         """
@@ -194,18 +219,21 @@ class DDPG:
 
     def run_ddpg(self):
         """
-        runs the DDPG algorithm for M epsidoes using the parameters defined above
+        Runs the DDPG algorithm for M episodes using the parameters defined above
         :return: None
         """
         critic_losses = []
         actor_losses = []
         is_list = []
+        is_ma_list = []
+
         for i in range(self.M):
             self.environment = AlmgrenChrissEnvironment()
+            _init = False
             for k in range(self.environment.N - 1):
-                observation_tensor = torch.FloatTensor(self.observation)
-                noise = torch.FloatTensor(np.random.normal(0, 0.1, 1))
-                self.a = self.actor_target(observation_tensor) + noise
+                observation_tensor = self.observation
+                noise = np.random.normal(0, 0.1, 1)
+                self.a = self.actor_target(torch.FloatTensor(observation_tensor)).detach().numpy() + noise
                 prev_obs = self.observation
                 self.get_reward()
                 self.step(self.a)
@@ -217,17 +245,18 @@ class DDPG:
                 prev_observations, actions, rewards, observations = self.sample_transitions(self.batch_size)
 
                 # critic updates
-                best_actions = self.actor_target(observations)
-                y = rewards + self.environment.gamma * self.critic_target(observations, best_actions)
-                critic_loss = F.mse_loss(self.critic(observations, actions), y)
+                best_actions = self.actor_target(torch.FloatTensor(observations))
+                y = torch.FloatTensor(rewards) + self.environment.gamma * \
+                    self.critic_target(torch.FloatTensor(observations), best_actions)
+                critic_loss = F.mse_loss(self.critic(torch.FloatTensor(observations), torch.FloatTensor(actions)), y)
                 critic_losses.append(critic_loss.detach().numpy())
                 self.critic_optimizer.zero_grad()
-                critic_loss.backward(retain_graph=True)
+                critic_loss.backward()
                 self.critic_optimizer.step()
 
                 # actor updates
-                actor_predictions = self.actor_target(observations)
-                actor_loss = -self.critic(observations, actor_predictions).mean()
+                actor_predictions = self.actor_target(torch.FloatTensor(observations))
+                actor_loss = -self.critic(torch.FloatTensor(observations), actor_predictions).mean()
                 actor_losses.append(actor_loss.detach().numpy())
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
@@ -236,35 +265,56 @@ class DDPG:
                 self.update_networks(self.critic, self.critic_target)
                 self.update_networks(self.actor, self.actor_target)
 
-            print(f"Episode {i} ({round(i / self.M * 100, 2)}%)")
+            implementation_shortfall = self.environment.initial_market_price * \
+                                       self.environment.X - self.environment.c[-1]
 
-            implementation_shortfall = self.environment.c[-1] - self.environment.initial_market_price * \
-                                       self.environment.X
             is_list.append(implementation_shortfall)
-            print(f"Implementation Shortfall = {implementation_shortfall}\n")
+
+            ma_starting_index = max(0, i-self.ma_length)
+            is_ma_list.append(sum(is_list[ma_starting_index:i+1])/(i-ma_starting_index+1))
+
+            if i % self.checkpoint_frequency == 0:
+                print(f"Episode {i} ({round(i / self.M * 100, 2)}%), Implementation Shortfall = "
+                      f"{implementation_shortfall}")
 
         date_str = str(datetime.now())[2:10] + "_" + str(datetime.now())[11:13] + "-" + str(datetime.now())[14:16]
 
         fig, axes = plt.subplots(2, figsize=(14, 10))
 
-        axes[0].plot(np.arange(len(critic_losses)), critic_losses)
+        axes[0].plot(np.arange(len(critic_losses)), critic_losses, color="sienna")
         axes[0].set(title="Critic Loss")
         axes[0].set(ylabel="MSE Loss")
 
-        axes[1].plot(np.arange(len(actor_losses)), actor_losses)
+        axes[1].plot(np.arange(len(actor_losses)), actor_losses, color="firebrick")
         axes[1].set(title="Actor Loss")
         axes[1].set(ylabel="MSE Loss")
         axes[1].set(xlabel="Update Iteration")
 
         for axis in axes.flat:
             axis.grid(True)
-        plt.savefig(f"../results/losses/losses-{date_str}.png")
+
+        plt.savefig(Directories.ddpg_loss_results + f"losses-{date_str}.png")
         plt.clf()
 
-        a_million = 1000000
-        plt.plot(np.arange(len(is_list)), np.array(is_list) / a_million)
+        a_thousand = 1000
+        plt.plot(np.arange(len(is_list)), np.array(is_list) / a_thousand, label="Implementation Shortfall",
+                 color="lightseagreen")
+        plt.plot(np.arange(len(is_ma_list)), np.array(is_ma_list) / a_thousand,
+                 label=f"{self.ma_length} Day Moving Average", color="m")
         plt.title("Implementation Shortfall")
         plt.xlabel("Episode")
-        plt.ylabel("Implementation Shortfall ($M)")
+        plt.ylabel("Implementation Shortfall ($k)")
+        plt.legend()
         plt.grid(True)
-        plt.savefig(f"../results/implementation-shortfall/implementation_shortfall-{date_str}.png")
+        plt.savefig(Directories.ddpg_is_results + f"is-{date_str}.png")
+        plt.clf()
+
+        plt.plot(np.arange(len(is_ma_list)), np.array(is_ma_list) / a_thousand, color="magenta")
+        plt.title(f"{self.ma_length} Day Moving Average Implementation Shortfall")
+        plt.xlabel("Episode")
+        plt.ylabel("Average Implementation Shortfall ($k)")
+        plt.grid(True)
+        plt.savefig(Directories.ddpg_is_ma_results + f"is-ma-{date_str}.png")
+        plt.clf()
+
+        self.environment.plot_simulation(Directories.ddpg_sim + f"simulation-{date_str}.png")
