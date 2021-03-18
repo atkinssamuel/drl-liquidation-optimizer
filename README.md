@@ -9,4 +9,4 @@
 ```conda env update --file ./environment.yml```
 
 ## Current Goals
-1. Strip Jaimungal implementation
+1. Refactor README with results.
