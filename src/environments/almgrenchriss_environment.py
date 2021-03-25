@@ -65,8 +65,15 @@ class AlmgrenChrissEnvironment:
         self.x[0] = self.X
         self.n = np.zeros(shape=(self.N,))
         self.c = np.zeros(shape=(self.N,))
+        self.U = np.zeros(shape=(self.N,))
+
+        self.k = 0
+        self.compute_U()
 
         self.k = 1
+        self.step_inventory()
+        self.step_price()
+        self.step_cash()
 
     def step(self, n=0):
         """
@@ -113,6 +120,61 @@ class AlmgrenChrissEnvironment:
         :return: None
         """
         self.c[self.k] = self.c[self.k - 1] + self.P[self.k - 1] * self.n[self.k-1]
+
+    def compute_h(self):
+        """
+        Computes and returns the h value for the E function:
+
+        h(n_k/tau) = epsilon * sgn(n_k) + eta / tau * n_k
+
+        :return: float
+        """
+        return self.epsilon * np.sign(self.n) + self.eta / self.tau * self.n
+
+    def compute_E(self):
+        """
+        Computes and returns the E value for the reward function:
+
+        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
+        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
+
+        :return: float
+        """
+        E_1 = self.gamma * sum(np.multiply(self.x, self.n))
+        E_2 = sum(np.multiply(self.n, self.compute_h()))
+        return E_1 + E_2
+
+    def compute_V(self):
+        """
+        Computes and returns the V value for the reward function:
+
+        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
+        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
+
+        :return: float
+        """
+        return np.square(self.sigma) * self.tau * sum(np.square(self.x))
+
+    def compute_U(self):
+        """
+        Computes the U value and stores it in the U vector:
+
+        U = E + lambda * V
+
+        :return: None
+        """
+        self.U[self.k] = self.compute_E() + self.lam * self.compute_V()
+
+    def get_reward(self):
+        """
+        Computes the reward and stores it in self.R:
+
+        R = U[k-1] - U[k]
+
+        :return: float
+        """
+        self.compute_U()
+        return (self.U[self.k-1] - self.U[self.k])/self.U[self.k-1]
 
     def plot_simulation(self, save_path=None):
         """

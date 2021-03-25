@@ -23,7 +23,7 @@ class DDPG:
             torch.nn.init.xavier_uniform_(layer.weight)
             layer.bias.data.fill_(0.01)
 
-    def __init__(self):
+    def __init__(self, D=5, lr=0.3, batch_size=1024, M=200, criticLR=0.001, actorLR=0.001):
         """
         Initializes the parameters and the state, observation, and action vectors
         """
@@ -31,30 +31,33 @@ class DDPG:
         self.environment = AlmgrenChrissEnvironment()
 
         # hyper-parameters
-        self.D = 5
-        self.lr = 0.3
-        self.batch_size = 1024
+        self.D = D
+        self.lr = lr
+        self.batch_size = batch_size
         self.checkpoint_frequency = 20
         # number of episodes
-        self.M = 200
-        # reward
-        self.R = None
-        self.criticLR = 0.00001
-        self.actorLR = 0.00001
+        self.M = M
+
+        self.criticLR = criticLR
+        self.actorLR = actorLR
 
         # plotting parameters
         # moving average length
         self.ma_length = 100
 
-        # action, observation, and replay buffer initialization
+        # action, reward, observation, and replay buffer initialization
+        # reward
+        self.R = None
+        # action
         self.a = None
+        # observation vectors
         self.observation = np.zeros(shape=(self.D + 3))
         self.observation[self.D + 1:] = [1, 1]
+        # observation buffer vectors
         self.B_prev_obs = None
         self.B_action = None
         self.B_R = None
         self.B_obs = None
-        self.U = np.zeros(shape=(self.environment.N,))
 
         # critic network initialization
         self.critic = DDPGCritic(self).apply(self.layer_init_callback)
@@ -120,61 +123,6 @@ class DDPG:
         self.environment.step(num_shares)
         self.update_observation()
 
-    def compute_h(self):
-        """
-        Computes and returns the h value for the E function:
-
-        h(n_k/tau) = epsilon * sgn(n_k) + eta / tau * n_k
-
-        :return: float
-        """
-        return self.environment.epsilon * np.sign(self.environment.n) + self.environment.eta / self.environment.tau \
-               * self.environment.n
-
-    def compute_V(self):
-        """
-        Computes and returns the V value for the reward function:
-
-        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
-        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
-
-        :return: float
-        """
-        return np.square(self.environment.sigma) * self.environment.tau * sum(np.square(self.environment.x))
-
-    def compute_E(self):
-        """
-        Computes and returns the E value for the reward function:
-
-        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
-        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
-
-        :return: float
-        """
-        E_1 = self.environment.gamma * sum(np.multiply(self.environment.x, self.environment.n))
-        E_2 = sum(np.multiply(self.environment.n, self.compute_h()))
-        return E_1 + E_2
-
-    def compute_U(self):
-        """
-        Computes the U value and stores it in the U vector:
-
-        U = E + lambda * V
-
-        :return: None
-        """
-        self.U[self.environment.k] = self.compute_E() + self.environment.lam * self.compute_V()
-
-    def get_reward(self):
-        """
-        Computes the reward and stores it in self.R:
-
-        R = U[k-1] - U[k]
-
-        :return: None
-        """
-        self.R = self.U[self.environment.k-1] - self.U[self.environment.k]
-
     def test_implementation(self):
         """
         Test implementation that steps the agent by selling half of the shares at each time-step
@@ -235,7 +183,7 @@ class DDPG:
                 noise = np.random.normal(0, 0.1, 1)
                 self.a = self.actor_target(torch.FloatTensor(observation_tensor)).detach().numpy() + noise
                 prev_obs = self.observation
-                self.get_reward()
+                self.R = self.environment.get_reward()
                 self.step(self.a)
                 self.add_transition(prev_obs)
 
@@ -256,7 +204,8 @@ class DDPG:
 
                 # actor updates
                 actor_predictions = self.actor_target(torch.FloatTensor(observations))
-                actor_loss = -self.critic(torch.FloatTensor(observations), actor_predictions).mean()
+                # produces a Q-value that we wish to maximize
+                actor_loss = -self.critic_target(torch.FloatTensor(observations), actor_predictions).mean()
                 actor_losses.append(actor_loss.detach().numpy())
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
