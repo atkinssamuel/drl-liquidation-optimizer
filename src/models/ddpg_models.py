@@ -9,7 +9,7 @@ class DDPGActor(torch.nn.Module):
         super(DDPGActor, self).__init__()
         # input = observation
         # observation = [rk - 2, rk - 1, rk, mk, lk] -> size(observation) = (D + 1) + 1 + 1 = D + 3
-        input_size = DDPG.D + 3
+        input_size = DDPG.observation.shape[0]
         hidden_layer_size = 2 * input_size
         # output = action
         output_size = 1
@@ -39,7 +39,7 @@ class DDPGCritic(torch.nn.Module):
         # observation = [rk-D, ..., rk, mk, lk]
         # observation example for D = 2: [rk - 2, rk - 1, rk, mk, lk] -> size(observation) = (D + 1) + 1 + 1 = D + 3
         # size(observation) = (DDPG.D + 3)
-        input_size = (DDPG.D + 3)
+        input_size = DDPG.observation.shape[0]
         hidden_layer_size = input_size
         hidden_layer_2_size = (hidden_layer_size + 1) * 2
         hidden_layer_3_size = hidden_layer_2_size * 2

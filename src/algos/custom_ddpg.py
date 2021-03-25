@@ -11,7 +11,7 @@ from datetime import datetime
 from src.models.ddpg_models import DDPGCritic, DDPGActor
 
 
-class DDPG:
+class CustomDDPG:
     @staticmethod
     def layer_init_callback(layer):
         """
@@ -23,15 +23,24 @@ class DDPG:
             torch.nn.init.xavier_uniform_(layer.weight)
             layer.bias.data.fill_(0.01)
 
-    def __init__(self, D=5, lr=0.3, batch_size=1024, M=200, criticLR=0.001, actorLR=0.001):
+    def __init__(self, lr=0.3, batch_size=1024, M=200, criticLR=0.001, actorLR=0.001):
         """
         Initializes the parameters and the state, observation, and action vectors
+
+        State:
+        [S_t, M_t, L] (price of stock, inventory, # of trades left)
+
+        Reward:
+        0 for all entries except for the last entry
+        R_final = E[x_n] - gamma / 2 * Var[x_n] ~ U(x_N)
+
+        Observation:
+        [S_t, M_t, L] - size = 3
         """
         # initializing a new environment
         self.environment = AlmgrenChrissEnvironment()
 
         # hyper-parameters
-        self.D = D
         self.lr = lr
         self.batch_size = batch_size
         self.checkpoint_frequency = 20
@@ -52,8 +61,11 @@ class DDPG:
         # action
         self.a = None
         # observation vectors
-        self.observation = np.zeros(shape=(self.D + 3))
-        self.observation[self.D + 1:] = [1, 1]
+        self.observation = np.zeros(shape=3)
+        self.observation[0] = self.environment.P_[0]
+        self.observation[1] = self.environment.x[0]
+        self.observation[2] = self.environment.L[0]
+
         # observation buffer vectors
         self.B_prev_obs = None
         self.B_action = None
@@ -80,39 +92,14 @@ class DDPG:
         for current_parameter, target_parameter in zip(current.parameters(), target.parameters()):
             target_parameter.data.copy_(self.lr * current_parameter.data * (1.0 - self.lr) * target_parameter.data)
 
-    def get_r(self):
-        """
-        Slides the r vector left in the observation vector and sets the r_kth element in the observation vector to
-        the log return at k-1
-        :return: None
-        """
-        self.observation[:self.D] = self.observation[1:self.D + 1]
-        self.observation[self.D] = np.log(self.environment.P[self.environment.k - 1] /
-                                          self.environment.P[self.environment.k - 2])
-
-    def get_m(self):
-        """
-        Sets the -2nd element in the observation vector to the m state value
-        :return: None
-        """
-        self.observation[-2] = (self.environment.N - (
-                self.environment.k - 1) * self.environment.tau) / self.environment.N
-
-    def get_l(self):
-        """
-        Sets the last element in the observation vector to the l state value:
-        :return: None
-        """
-        self.observation[-1] = self.environment.x[self.environment.k - 1] / self.environment.X
-
     def update_observation(self):
         """
-        Updates the observation vector using the previously defined "get" equations
+        Updates the observation vector
         :return: None
         """
-        self.get_r()
-        self.get_m()
-        self.get_l()
+        self.observation[0] = self.environment.P_[self.environment.k-1]
+        self.observation[1] = self.environment.x[self.environment.k-1]
+        self.observation[2] = self.environment.L[self.environment.k-1]
 
     def step(self, a):
         """
@@ -120,18 +107,46 @@ class DDPG:
         :param a: action
         :return: None
         """
-        num_shares = a * self.environment.x[self.environment.k - 1]
+        num_shares = a * self.environment.x[self.environment.k-1]
         self.environment.step(num_shares)
         self.update_observation()
 
-    def test_implementation(self):
+    def compute_E(self):
         """
-        Test implementation that steps the agent by selling half of the shares at each time-step
-        :return: None
+        Computes and returns the E value for the reward function:
+
+        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
+        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
+
+        :return: float
         """
-        for k in range(self.environment.N - 1):
-            self.step(0.5)
-        self.environment.plot_simulation()
+        E_1 = self.environment.gamma * sum(np.multiply(self.environment.x, self.environment.n))
+        E_2 = sum(np.multiply(self.environment.n, self.environment.compute_h()))
+        return E_1 + E_2
+
+    def compute_V(self):
+        """
+        Computes and returns the V value for the reward function:
+
+        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
+        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
+
+        :return: float
+        """
+        return np.square(self.environment.sigma) * self.environment.tau * sum(np.square(self.environment.x))
+
+    def get_reward(self):
+        """
+        Returns the reward
+
+        R = {0 if self.k != self.N-1
+        E[x_n] - gamma / 2 * Var[x_n] otherwise}
+
+        :return:
+        """
+        if self.environment.k == self.environment.N-1:
+            return self.compute_E() - self.environment.gamma / 2 * self.compute_V()
+        return 0
 
     def add_transition(self, prev_obs):
         """
@@ -177,14 +192,14 @@ class DDPG:
         """
         # noinspection PyUnresolvedReferences
         t = np.linspace(0, self.environment.T, self.environment.N)
-        q_n = self.environment.x[0] * np.sinh(self.environment.alpha * (self.environment.T - t)) / \
-              np.sinh(self.environment.alpha * self.environment.T)
+        q_n = self.environment.x[0] * np.sinh(self.environment.kappa * (self.environment.T - t)) / \
+              np.sinh(self.environment.kappa * self.environment.T)
         q_n_sim = None
         for i in range(self.inventory_sim_length):
             self.environment = AlmgrenChrissEnvironment()
             for k in range(self.environment.N - 1):
                 self.a = self.actor_target(torch.FloatTensor(self.observation)).detach().numpy()
-                self.R = self.environment.get_reward()
+                self.R = self.get_reward()
                 self.step(self.a)
             if q_n_sim is None:
                 q_n_sim = self.environment.x
@@ -199,7 +214,7 @@ class DDPG:
         plt.ylabel("Inventory")
         plt.grid(True)
         plt.legend()
-        plt.savefig(Directories.ddpg_model_inv_results + f"inventory-{date_str}.png")
+        plt.savefig(Directories.custom_ddpg_model_inv_results + f"inventory-{date_str}.png")
 
     def run_ddpg(self):
         """
@@ -219,7 +234,7 @@ class DDPG:
                 noise = np.random.normal(0, 0.1, 1)
                 self.a = self.actor_target(torch.FloatTensor(observation_tensor)).detach().numpy() + noise
                 prev_obs = self.observation
-                self.R = self.environment.get_reward()
+                self.R = np.array(self.get_reward())
                 self.step(self.a)
                 self.add_transition(prev_obs)
 
@@ -278,16 +293,19 @@ class DDPG:
         for axis in axes.flat:
             axis.grid(True)
 
-        plt.savefig(Directories.ddpg_loss_results + f"losses-{date_str}.png")
+        plt.savefig(Directories.custom_ddpg_loss_results + f"losses-{date_str}.png")
         plt.clf()
 
         a_thousand = 1000
-        plt.plot(np.arange(len(is_ma_list)), np.array(is_ma_list) / a_thousand, color="magenta")
-        plt.title(f"{self.ma_length} Day Moving Average Implementation Shortfall")
+        plt.plot(np.arange(len(is_list)), np.array(is_list) / a_thousand,
+                 label="Implementation Shortfall", color="cyan")
+        plt.plot(np.arange(len(is_ma_list)), np.array(is_ma_list) / a_thousand,
+                 label=f"{self.ma_length} Day Moving Average Implementation Shortfall", color="magenta")
+        plt.title("IS & Moving Average IS")
         plt.xlabel("Episode")
-        plt.ylabel("Average Implementation Shortfall ($k)")
+        plt.ylabel("Implementation Shortfall ($k)")
         plt.grid(True)
-        plt.savefig(Directories.ddpg_is_ma_results + f"is-ma-{date_str}.png")
+        plt.savefig(Directories.custom_ddpg_is_ma_results + f"is-ma-{date_str}.png")
         plt.clf()
 
         self.analyze_analytical(date_str)

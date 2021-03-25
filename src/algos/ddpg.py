@@ -54,6 +54,10 @@ class DDPG:
         # observation vectors
         self.observation = np.zeros(shape=(self.D + 3))
         self.observation[self.D + 1:] = [1, 1]
+        self.environment.k = 0
+        self.U = np.zeros(shape=(self.environment.N,))
+        self.compute_U()
+        self.environment.k = 1
         # observation buffer vectors
         self.B_prev_obs = None
         self.B_action = None
@@ -87,8 +91,8 @@ class DDPG:
         :return: None
         """
         self.observation[:self.D] = self.observation[1:self.D + 1]
-        self.observation[self.D] = np.log(self.environment.P[self.environment.k - 1] /
-                                          self.environment.P[self.environment.k - 2])
+        self.observation[self.D] = np.log(self.environment.P_[self.environment.k - 1] /
+                                          self.environment.P_[self.environment.k - 2])
 
     def get_m(self):
         """
@@ -120,9 +124,66 @@ class DDPG:
         :param a: action
         :return: None
         """
-        num_shares = a * self.environment.x[self.environment.k - 1]
+        num_shares = a * self.environment.x[self.environment.k-1]
         self.environment.step(num_shares)
         self.update_observation()
+
+    def compute_h(self):
+        """
+        Computes and returns the h value for the E function:
+
+        h(n_k/tau) = epsilon * sgn(n_k) + eta / tau * n_k
+
+        :return: float
+        """
+        return self.environment.epsilon * np.sign(self.environment.n) + self.environment.eta / \
+               self.environment.tau * self.environment.n
+
+    def compute_E(self):
+        """
+        Computes and returns the E value for the reward function:
+
+        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
+        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
+
+        :return: float
+        """
+        E_1 = self.environment.gamma * sum(np.multiply(self.environment.x, self.environment.n))
+        E_2 = sum(np.multiply(self.environment.n, self.compute_h()))
+        return E_1 + E_2
+
+    def compute_V(self):
+        """
+        Computes and returns the V value for the reward function:
+
+        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
+        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
+
+        :return: float
+        """
+        return np.square(self.environment.sigma) * self.environment.tau * sum(np.square(self.environment.x))
+
+    def compute_U(self):
+        """
+        Computes the U value and stores it in the U vector:
+
+        U = E + lambda * V
+
+        :return: None
+        """
+        self.U[self.environment.k] = self.compute_E() + self.environment.lam * self.compute_V()
+
+    def get_reward(self):
+        """
+        Computes the reward and stores it in self.R:
+
+        R = U[k-1] - U[k]
+
+        :return: float
+        """
+        self.compute_U()
+        return (self.U[self.environment.k-1] - self.U[self.environment.k])\
+               / self.U[self.environment.k-1]
 
     def test_implementation(self):
         """
@@ -177,14 +238,14 @@ class DDPG:
         """
         # noinspection PyUnresolvedReferences
         t = np.linspace(0, self.environment.T, self.environment.N)
-        q_n = self.environment.x[0] * np.sinh(self.environment.alpha * (self.environment.T - t)) / \
-              np.sinh(self.environment.alpha * self.environment.T)
+        q_n = self.environment.x[0] * np.sinh(self.environment.kappa * (self.environment.T - t)) / \
+              np.sinh(self.environment.kappa * self.environment.T)
         q_n_sim = None
         for i in range(self.inventory_sim_length):
             self.environment = AlmgrenChrissEnvironment()
             for k in range(self.environment.N - 1):
                 self.a = self.actor_target(torch.FloatTensor(self.observation)).detach().numpy()
-                self.R = self.environment.get_reward()
+                self.R = self.get_reward()
                 self.step(self.a)
             if q_n_sim is None:
                 q_n_sim = self.environment.x
@@ -219,7 +280,7 @@ class DDPG:
                 noise = np.random.normal(0, 0.1, 1)
                 self.a = self.actor_target(torch.FloatTensor(observation_tensor)).detach().numpy() + noise
                 prev_obs = self.observation
-                self.R = self.environment.get_reward()
+                self.R = self.get_reward()
                 self.step(self.a)
                 self.add_transition(prev_obs)
 
@@ -282,10 +343,13 @@ class DDPG:
         plt.clf()
 
         a_thousand = 1000
-        plt.plot(np.arange(len(is_ma_list)), np.array(is_ma_list) / a_thousand, color="magenta")
-        plt.title(f"{self.ma_length} Day Moving Average Implementation Shortfall")
+        plt.plot(np.arange(len(is_list)), np.array(is_list) / a_thousand,
+                 label="Implementation Shortfall", color="cyan")
+        plt.plot(np.arange(len(is_ma_list)), np.array(is_ma_list) / a_thousand,
+                 label=f"{self.ma_length} Day Moving Average Implementation Shortfall", color="magenta")
+        plt.title("IS & Moving Average IS")
         plt.xlabel("Episode")
-        plt.ylabel("Average Implementation Shortfall ($k)")
+        plt.ylabel("Implementation Shortfall ($k)")
         plt.grid(True)
         plt.savefig(Directories.ddpg_is_ma_results + f"is-ma-{date_str}.png")
         plt.clf()
