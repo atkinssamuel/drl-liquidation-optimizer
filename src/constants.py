@@ -29,7 +29,7 @@ class DDPGHyperparameters:
 class CustomDDPGHyperparameters:
     lr = 0.3
     batch_size = 1024
-    M = 200
-    criticLR = 0.01
+    M = 400
+    criticLR = 0.001
     actorLR = 0.01
 

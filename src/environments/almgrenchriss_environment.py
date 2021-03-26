@@ -70,6 +70,9 @@ class AlmgrenChrissEnvironment:
         self.c = np.zeros(shape=(self.N,))
         self.L = np.zeros(shape=(self.N,))
         self.L[0] = 1
+        self.k = 0
+        self.U = np.zeros(shape=(self.N,))
+        self.compute_U()
 
         self.k = 1
         self.step_inventory()
@@ -120,18 +123,78 @@ class AlmgrenChrissEnvironment:
         """
         return self.epsilon * np.sign(self.n[self.k-1]) + self.eta / self.tau * self.n[self.k-1]
 
+    def compute_E(self):
+        """
+        Computes and returns the E value for the reward function:
+
+        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
+        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
+
+        :return: float
+        """
+        E_1 = self.gamma * sum(np.multiply(self.x, self.n))
+        E_2 = sum(np.multiply(self.n, self.compute_h()))
+        return E_1 + E_2
+
+    def compute_V(self):
+        """
+        Computes and returns the V value for the reward function:
+
+        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
+        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
+
+        :return: float
+        """
+        return np.square(self.sigma) * self.tau * sum(np.square(self.x))
+
+    def compute_U(self):
+        """
+        Computes the U value and stores it in the U vector:
+
+        U = E + lambda * V
+
+        :return: None
+        """
+        self.U[self.k] = self.compute_E() + self.lam * self.compute_V()
+
+    def get_reward(self, reward_option="madrl"):
+        """
+        Returns the reward for the specified reward option
+
+        "custom" reward:
+        R = {0 if self.k != self.N-1
+        E[x_n] - gamma / 2 * Var[x_n] otherwise}
+
+        "madrl" reward:
+        R = (U[k-1] - U[k])/U[k-1]
+
+        :return:
+        """
+        if reward_option == "custom":
+            if self.k == self.N-1:
+                eta_tilde = self.eta - self.gamma / 2 * self.tau
+                E_x_n = self.c[0] + self.x[0] * self.P_[0] - self.gamma / 2 * self.x[0]**2 - \
+                    eta_tilde * self.tau * np.sum(np.square(self.n))
+                V_x_n = self.sigma**2 * self.tau * np.sum(np.square(self.x))
+                return E_x_n - self.gamma / 2 * V_x_n
+            return 0
+        elif reward_option == "madrl":
+            self.compute_U()
+            return (self.U[self.k - 1] - self.U[self.k]) \
+                   / self.U[self.k - 1]
+
     def step_price(self):
         """
         Steps the price forward:
 
         P_k = P_k-1 + sigma * sqrt(tau) * W - gamma * n_k-1
+        P_k_tilde = P_k-1 - temporary price impact (self.compute_h())
 
         next price = previous price + noise from random walk process - permanent price impact
 
         :return: None
         """
-        self.P[self.k] = self.P[self.k - 1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - self.gamma * self.n[
-            self.k - 1]
+        self.P[self.k] = self.P[self.k-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - self.gamma * self.n[self.k-1]
         self.P_[self.k] = self.P[self.k-1] - self.compute_h()
 
     def step_cash(self):

@@ -52,7 +52,7 @@ class CustomDDPG:
 
         # plotting parameters
         # moving average length
-        self.ma_length = 100
+        self.ma_length = 15
         self.inventory_sim_length = 300
 
         # action, reward, observation, and replay buffer initialization
@@ -111,43 +111,6 @@ class CustomDDPG:
         self.environment.step(num_shares)
         self.update_observation()
 
-    def compute_E(self):
-        """
-        Computes and returns the E value for the reward function:
-
-        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
-        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
-
-        :return: float
-        """
-        E_1 = self.environment.gamma * sum(np.multiply(self.environment.x, self.environment.n))
-        E_2 = sum(np.multiply(self.environment.n, self.environment.compute_h()))
-        return E_1 + E_2
-
-    def compute_V(self):
-        """
-        Computes and returns the V value for the reward function:
-
-        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
-        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
-
-        :return: float
-        """
-        return np.square(self.environment.sigma) * self.environment.tau * sum(np.square(self.environment.x))
-
-    def get_reward(self):
-        """
-        Returns the reward
-
-        R = {0 if self.k != self.N-1
-        E[x_n] - gamma / 2 * Var[x_n] otherwise}
-
-        :return:
-        """
-        if self.environment.k == self.environment.N-1:
-            return self.compute_E() - self.environment.gamma / 2 * self.compute_V()
-        return 0
-
     def add_transition(self, prev_obs):
         """
         Saves an observation transition as numpy arrays in the self.B_ vectors
@@ -199,7 +162,7 @@ class CustomDDPG:
             self.environment = AlmgrenChrissEnvironment()
             for k in range(self.environment.N - 1):
                 self.a = self.actor_target(torch.FloatTensor(self.observation)).detach().numpy()
-                self.R = self.get_reward()
+                self.R = self.environment.get_reward(reward_option="custom")
                 self.step(self.a)
             if q_n_sim is None:
                 q_n_sim = self.environment.x
@@ -234,7 +197,7 @@ class CustomDDPG:
                 noise = np.random.normal(0, 0.1, 1)
                 self.a = self.actor_target(torch.FloatTensor(observation_tensor)).detach().numpy() + noise
                 prev_obs = self.observation
-                self.R = np.array(self.get_reward())
+                self.R = np.array(self.environment.get_reward(reward_option="custom"))
                 self.step(self.a)
                 self.add_transition(prev_obs)
 
@@ -306,6 +269,7 @@ class CustomDDPG:
         plt.ylabel("Implementation Shortfall ($k)")
         plt.grid(True)
         plt.savefig(Directories.custom_ddpg_is_ma_results + f"is-ma-{date_str}.png")
+        plt.legend()
         plt.clf()
 
         self.analyze_analytical(date_str)
