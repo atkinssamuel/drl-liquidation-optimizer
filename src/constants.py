@@ -4,32 +4,34 @@ class Directories:
     """
     results = "results/"
 
-    # ddpg results
-    ddpg_results = results + "ddpg/"
-    ddpg_loss_results = ddpg_results + "losses/"
-    ddpg_is_ma_results = ddpg_results + "is-ma/"
-    ddpg_model_inv_results = ddpg_results + "model-inv/"
+    # madrl results
+    madrl_results = results + "madrl/"
 
     # custom ddpg results
-    custom_ddpg_results = results + "custom-ddpg/"
-    custom_ddpg_loss_results = custom_ddpg_results + "losses/"
-    custom_ddpg_is_ma_results = custom_ddpg_results + "is-ma/"
-    custom_ddpg_model_inv_results = custom_ddpg_results + "model-inv/"
+    custom_results = results + "custom/"
+
+    # results directories
+    losses = "losses/"
+    is_ma = "is-ma/"
+    model_inv = "model-inv/"
+    rewards = "rewards/"
+
+
+class Algos:
+    madrl = "madrl"
+    custom = "custom"
 
 
 class DDPGHyperparameters:
-    D = 5
-    lr = 0.3
-    batch_size = 1024
-    M = 400
-    criticLR = 0.01
-    actorLR = 0.01
+    algo                    = Algos.custom
+    clear                   = True
+    D                       = 5
+    lr                      = 0.1
+    discount                = 0.99
+    batch_size              = 1024
+    M                       = 60
+    criticLR                = 0.01
+    actorLR                 = 0.01
+    checkpoint_frequency    = 20
 
-
-class CustomDDPGHyperparameters:
-    lr = 0.3
-    batch_size = 1024
-    M = 400
-    criticLR = 0.001
-    actorLR = 0.01
 

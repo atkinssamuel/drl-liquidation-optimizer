@@ -1,14 +1,13 @@
 from src.algos.ddpg import DDPG
 from src.constants import DDPGHyperparameters
-from src.algos.custom_ddpg import CustomDDPG
-from src.constants import CustomDDPGHyperparameters
+from src.helpers import clear_results
 
 if __name__ == "__main__":
-    # ddpg = DDPG(D=DDPGHyperparameters.D, lr=DDPGHyperparameters.lr, batch_size=DDPGHyperparameters.batch_size,
-    #             M=DDPGHyperparameters.M, criticLR=DDPGHyperparameters.criticLR, actorLR=DDPGHyperparameters.actorLR)
-    # ddpg.run_ddpg()
+    clear_results(algo=DDPGHyperparameters.algo, clear=DDPGHyperparameters.clear)
 
-    custom_ddpg = CustomDDPG(lr=CustomDDPGHyperparameters.lr, batch_size=CustomDDPGHyperparameters.batch_size,
-                             M=CustomDDPGHyperparameters.M, criticLR=CustomDDPGHyperparameters.criticLR,
-                             actorLR=CustomDDPGHyperparameters.actorLR)
-    custom_ddpg.run_ddpg()
+    ddpg = DDPG(algo=DDPGHyperparameters.algo, D=DDPGHyperparameters.D, lr=DDPGHyperparameters.lr,
+                batch_size=DDPGHyperparameters.batch_size, discount_factor=DDPGHyperparameters.discount,
+                M=DDPGHyperparameters.M, criticLR=DDPGHyperparameters.criticLR, actorLR=DDPGHyperparameters.actorLR,
+                checkpoint_frequency=DDPGHyperparameters.checkpoint_frequency)
+    ddpg.run_ddpg()
+
