@@ -35,14 +35,28 @@ class DDPG:
     @staticmethod
     def init_custom_obs(environment):
         """
-        Initializes the observatoin vector for the custom algo formulation
-        :param environment: almgrenchriss_environment instance
+        Initializes the observation vector for the custom algo formulation
+        :param environment: almgrenchriss environment instance
         :return: (3,) environment array
         """
         return np.array([environment.P_[0], environment.x[0], environment.L[0]])
 
-    def __init__(self, algo=Algos.madrl, D=5, lr=0.3, batch_size=1024, discount_factor=0.99, M=200, criticLR=0.001,
-                 actorLR=0.001, checkpoint_frequency=20):
+    def __init__(self,
+                 algo=Algos.madrl,
+                 D=5,
+                 rho=0.99,
+                 batch_size=1024,
+                 discount_factor=0.99,
+                 M=200,
+                 criticLR=0.001,
+                 actorLR=0.001,
+                 replay_buffer_size=10000,
+                 checkpoint_frequency=20,
+                 inventory_sim_length=100,
+                 pre_training_length=30,
+                 post_training_length=30,
+                 training_noise=0.1,
+                 decay=True):
         """
         Initializes the parameters and the state, observation, and action vectors
 
@@ -56,10 +70,10 @@ class DDPG:
 
         # hyper-parameters
         self.D = D
-        self.lr = lr
+        self.rho = rho
         self.batch_size = batch_size
         self.discount = discount_factor
-        self.checkpoint_frequency = 20
+        self.checkpoint_frequency = checkpoint_frequency
         # number of episodes
         self.M = M
 
@@ -67,8 +81,8 @@ class DDPG:
         self.algo = algo
         self.observation = None
         if self.algo == Algos.madrl:
-            self.algo_results = Directories.madrl_results
             self.observation = self.init_madrl_obs(self.D)
+            self.algo_results = Directories.madrl_results
         elif self.algo == Algos.custom:
             self.observation = self.init_custom_obs(self.environment)
             self.algo_results = Directories.custom_results
@@ -83,12 +97,22 @@ class DDPG:
 
         # plotting parameters
         # moving average length
-        self.ma_length = 15
-        self.inventory_sim_length = 300
+        self.ma_length              = 15
+        self.inventory_sim_length   = inventory_sim_length
+        self.pre_training_length    = pre_training_length
+        self.post_training_length   = post_training_length
+        self.training_noise         = training_noise
+        if decay:
+            self.training_noise_decay = self.training_noise/self.M
+        else:
+            self.training_noise_decay = decay
 
         # replay buffer: obs_i + a + r + obs_i+1
-        self.replay_buffer_size = self.observation.shape[0] + 1 + 1 + self.observation.shape[0]
-        self.replay_buffer = None
+        self.replay_buffer_width = self.observation.shape[0] + 1 + 1 + self.observation.shape[0]
+        self.replay_buffer_size = replay_buffer_size
+        self.replay_buffer = np.zeros(shape=(self.replay_buffer_size, self.replay_buffer_width))
+        self.replay_buffer_index = 0
+        self.replay_buffer_num_entries = 0
 
         # critic network initialization
         self.critic = DDPGCritic(self).apply(self.layer_init_callback)
@@ -108,7 +132,7 @@ class DDPG:
         :return: None
         """
         for current_parameter, target_parameter in zip(current.parameters(), target.parameters()):
-            target_parameter.data.copy_(self.lr * current_parameter.data * (1.0 - self.lr) * target_parameter.data)
+            target_parameter.data.copy_(self.rho * current_parameter.data * (1.0 - self.rho) * target_parameter.data)
 
     def get_r(self):
         """
@@ -171,44 +195,66 @@ class DDPG:
         Saves an observation transition into the replay buffer
         :return: None
         """
-        replay_buffer_entry = np.zeros(shape=(self.replay_buffer_size,))
+        replay_buffer_entry = np.zeros(shape=(1, self.replay_buffer_width))
 
-        replay_buffer_entry[:obs.shape[0]] = obs
-        replay_buffer_entry[obs.shape[0]] = action
-        replay_buffer_entry[obs.shape[0]+1] = reward
-        replay_buffer_entry[obs.shape[0]+2:] = next_obs
+        replay_buffer_entry[0, :obs.shape[0]] = obs
+        replay_buffer_entry[0, obs.shape[0]] = action
+        replay_buffer_entry[0, obs.shape[0]+1] = reward
+        replay_buffer_entry[0, obs.shape[0]+2:] = next_obs
 
-        if self.replay_buffer is None:
-            self.replay_buffer = replay_buffer_entry
-        else:
-            self.replay_buffer = np.vstack((self.replay_buffer, replay_buffer_entry))
+        self.replay_buffer[self.replay_buffer_index, :] = replay_buffer_entry
+        self.replay_buffer_index = (self.replay_buffer_index + 1) % self.replay_buffer_size
+        self.replay_buffer_num_entries = max(self.replay_buffer_num_entries, self.replay_buffer_index)
+
         return
 
-    def sample_transitions(self, N):
+    def sample_transitions(self, N, L):
         """
-        Samples N transitions from the replay buffer and returns them as appropriately sized obs, action, reward,
-        next_obs np.arrays
+        Samples N transitions from the first L replay buffer entries and returns them as appropriately sized obs,
+        action, reward, next_obs torch tensors
         :param N: number of transitions to sample
+        :param L: last non-zero entry in the replay buffer
         :return: obs, action, reward, next_obs
         """
-        transition_indices = np.random.randint(self.replay_buffer_size, size=N)
+        transition_indices = np.random.randint(L, size=N)
         sample = self.replay_buffer[transition_indices, :]
 
-        obs = sample[:, :self.observation.shape[0]]
-        action = sample[:, self.observation.shape[0]].reshape(-1, 1)
-        reward = sample[:, self.observation.shape[0]+1].reshape(-1, 1)
-        next_obs = sample[:, self.observation.shape[0]+2:]
+        obs = torch.FloatTensor(sample[:, :self.observation.shape[0]])
+        action = torch.FloatTensor(sample[:, self.observation.shape[0]].reshape(-1, 1))
+        reward = torch.FloatTensor(sample[:, self.observation.shape[0]+1].reshape(-1, 1))
+        next_obs = torch.FloatTensor(sample[:, self.observation.shape[0]+2:])
 
         return obs, action, reward, next_obs
+
+    def simulate_reward(self, length):
+        """
+        Simulates the total reward using the actor_target model
+        :return: rewards np.array
+        """
+        rewards = []
+        for i in range(length):
+            self.environment = AlmgrenChrissEnvironment()
+            total_reward = 0
+            if self.algo == Algos.madrl:
+                self.observation = self.init_madrl_obs(self.D)
+            elif self.algo == Algos.custom:
+                self.observation = self.init_custom_obs(self.environment)
+
+            for k_ in range(self.environment.N-1):
+                self.a = self.actor_target.forward(torch.FloatTensor(self.observation)).detach().numpy()
+                _, _, reward, _ = self.step(self.a)
+                total_reward += reward
+            rewards.append(total_reward)
+        return np.array(rewards)
 
     def analyze_analytical(self, date_str):
         """
         Simulates the trained model and compares the model's inventory process with the inventory process defined
-        by the analytical solution
+        by the analytical solution. Also returns the average reward obtained by executing the optimal solution.
 
         q*_n = q_0 sinh(alpha * (T-t))/sinh(alpha * T)
 
-        :return: None
+        :return: float (average reward)
         """
         # noinspection PyUnresolvedReferences
         t = np.linspace(0, self.environment.T, self.environment.N)
@@ -217,7 +263,6 @@ class DDPG:
         q_n_sim = None
         for i in range(self.inventory_sim_length):
             self.environment = AlmgrenChrissEnvironment()
-
             if self.algo == Algos.madrl:
                 self.observation = self.init_madrl_obs(self.D)
             elif self.algo == Algos.custom:
@@ -225,8 +270,7 @@ class DDPG:
 
             for k_ in range(self.environment.N-1):
                 self.a = self.actor_target.forward(torch.FloatTensor(self.observation)).detach().numpy()
-                self.step(self.a)
-
+                _, _, reward, _ = self.step(self.a)
             if q_n_sim is None:
                 q_n_sim = self.environment.x
                 continue
@@ -241,6 +285,21 @@ class DDPG:
         plt.grid(True)
         plt.legend()
         plt.savefig(self.algo_results + Directories.model_inv + f"inventory-{date_str}.png")
+        plt.clf()
+
+        rewards_list = []
+        for i in range(self.inventory_sim_length):
+            self.environment = AlmgrenChrissEnvironment()
+            total_reward = 0
+            for j in range(1, self.environment.N):
+                t_j_ = (j - 1/2) * self.environment.tau
+                n_j = 2 * np.sinh(1/2*self.environment.kappa * self.environment.tau)/\
+                                np.sinh(self.environment.kappa*self.environment.T) *\
+                                np.cosh(self.environment.kappa*(self.environment.T - t_j_)) * \
+                                self.environment.x[0]
+                total_reward += self.environment.step(n_j, reward_option=self.algo)
+            rewards_list.append(total_reward)
+        return np.average(np.array(rewards_list), axis=0)
 
     def run_ddpg(self):
         """
@@ -251,43 +310,47 @@ class DDPG:
         actor_losses = []
         is_list = []
         is_ma_list = []
-        rewards_list = []
+        pre_training_rewards = self.simulate_reward(self.pre_training_length)
+        training_rewards = []
 
         for i in range(self.M):
             self.environment = AlmgrenChrissEnvironment()
             total_reward = 0
             for k_ in range(self.environment.N-1):
-                noise = np.random.normal(0, 0.1, 1)
+                noise = np.random.normal(0, self.training_noise, 1)
                 self.a = self.actor_target.forward(torch.FloatTensor(self.observation)).detach().numpy() + noise
 
                 obs, action, reward, next_obs = self.step(self.a)
                 self.add_transition(obs, action, reward, next_obs)
                 total_reward += reward
 
-                if self.replay_buffer.shape[0] < self.batch_size:
+                if self.replay_buffer_num_entries < self.batch_size:
                     continue
 
-                obs, action, reward, next_obs = self.sample_transitions(self.batch_size)
+                obs, action, reward, next_obs = self.sample_transitions(self.batch_size, self.replay_buffer_num_entries)
 
                 # critic updates
-                best_action = self.actor_target.forward(torch.FloatTensor(obs))
-                Q_next = self.critic_target.forward(torch.FloatTensor(next_obs), best_action)
-                y = torch.FloatTensor(reward) + self.discount * Q_next
-                critic_loss = F.mse_loss(self.critic.forward(torch.FloatTensor(obs), torch.FloatTensor(action)), y)
+                best_action = self.actor_target.forward(obs)
+                with torch.no_grad():
+                    Q_next = self.critic_target.forward(next_obs, best_action)
+                y = reward + self.discount * Q_next
+                critic_loss = F.mse_loss(self.critic.forward(obs, action), y)
                 critic_losses.append(critic_loss.detach().numpy())
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
                 self.critic_optimizer.step()
 
                 # actor updates
-                actor_prediction = self.actor_target.forward(torch.FloatTensor(obs))
+                actor_prediction = self.actor.forward(obs)
                 # produces a Q-value that we wish to maximize
-                actor_loss = -self.critic_target.forward(torch.FloatTensor(obs), actor_prediction).mean()
+                Q_value = self.critic_target.forward(obs, actor_prediction)
+                actor_loss = -Q_value.mean()
                 actor_losses.append(actor_loss.detach().numpy())
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
                 self.actor_optimizer.step()
 
+                # update the target networks
                 self.update_networks(self.critic, self.critic_target)
                 self.update_networks(self.actor, self.actor_target)
 
@@ -298,11 +361,18 @@ class DDPG:
 
             ma_starting_index = max(0, i - self.ma_length)
             is_ma_list.append(sum(is_list[ma_starting_index:i + 1]) / (i - ma_starting_index + 1))
-            rewards_list.append(total_reward)
+            training_rewards.append(total_reward)
 
             if i % self.checkpoint_frequency == 0:
                 print(f"Episode {i} ({round(i / self.M * 100, 2)}%), Implementation Shortfall = "
                       f"{implementation_shortfall}")
+
+            self.training_noise = max(0, self.training_noise-self.training_noise_decay)
+
+        training_rewards = np.array(training_rewards)
+
+        # executing post-training simulation
+        post_training_rewards = self.simulate_reward(self.post_training_length)
 
         date_str = str(datetime.now())[2:10] + "_" + str(datetime.now())[11:13] + "-" + str(datetime.now())[14:16]
 
@@ -331,16 +401,38 @@ class DDPG:
         plt.xlabel("Episode")
         plt.ylabel("Implementation Shortfall")
         plt.grid(True)
-        plt.savefig(self.algo_results + Directories.is_ma + f"is-ma-{date_str}.png")
         plt.legend()
+        plt.savefig(self.algo_results + Directories.is_ma + f"is-ma-{date_str}.png")
         plt.clf()
+        plt.close()
 
-        plt.plot(np.arange(len(rewards_list)), np.array(rewards_list), color="lawngreen")
+        analytical_average_reward = self.analyze_analytical(date_str)
+
+        # reward plotting
+        pre_train_ind = pre_training_rewards.shape[0]
+        post_train_ind = pre_train_ind + training_rewards.shape[0]
+        final_ind = post_train_ind + post_training_rewards.shape[0]
+        # pre-training rewards
+        plt.plot(np.arange(0, pre_train_ind), pre_training_rewards, label="Pre-Training Rewards", color="lawngreen")
+        # training rewards
+        plt.plot(np.arange(pre_train_ind-1, post_train_ind+1),
+                 np.hstack((np.hstack((pre_training_rewards[-1], training_rewards)), post_training_rewards[0])),
+                 label="Training Rewards", color="orange")
+        # post-training rewards
+        plt.plot(np.arange(post_train_ind, final_ind), post_training_rewards,
+                 label="Post-Training Rewards", color="blue")
+        # analytical reward average
+        plt.plot(np.arange(final_ind), np.ones(shape=(final_ind,))*analytical_average_reward,
+                 linestyle="dashed", color="brown",
+                 label="Analytical Solution Average Reward")
+        if self.algo == Algos.madrl:
+            plt.ylim(bottom=-7, top=-2)
         plt.title("Reward")
         plt.xlabel("Episode")
         plt.ylabel("Total Reward")
         plt.grid(True)
+        plt.legend()
         plt.savefig(self.algo_results + Directories.rewards + f"reward-{date_str}.png")
         plt.clf()
+        plt.close()
 
-        self.analyze_analytical(date_str)

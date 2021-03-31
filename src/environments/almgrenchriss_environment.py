@@ -38,6 +38,8 @@ class AlmgrenChrissEnvironment:
     - Arrays start at 0 but the way in which states are referenced starts at 1
     - Therefore, k will range from 1 -> N and arrays will be indexed by calling the ind(k) callback
         - k = 1 corresponds to the 0-th element in an array
+    - To go from k to k + 1, we liquidate n_k shares
+        - n_k is the number of shares liquidated from k-1 to k
     """
 
     def __init__(self):
@@ -45,25 +47,25 @@ class AlmgrenChrissEnvironment:
         Parameter and state initialization
         """
         self.initial_market_price   = 50
-        volatility                  = 0.3
+        volatility                  = 0.12
         arr                         = 0.1
         daily_trading_volume        = 5000000
         yearly_trading_days         = 250
         self.T                      = 60
         self.N                      = 60
         self.X                      = 10 ** 6
-        self.lam                    = 10 ** (-8)
+        self.lam                    = 1.2 * 10 ** (-6)
 
         bid_ask = 1 / 8
-        daily_volatility = volatility / np.sqrt(yearly_trading_days)
-        self.tau = self.T / self.N
-        self.sigma = daily_volatility * self.initial_market_price
-        self.alpha = arr / yearly_trading_days * self.initial_market_price  # 0.02
-        self.epsilon = bid_ask / 2
-        self.eta = bid_ask / (0.01 * daily_trading_volume)
-        self.gamma = bid_ask / (0.1 * daily_trading_volume)  # 2.5e-07
+        daily_volatility = volatility / np.sqrt(yearly_trading_days)            # 0.007589
+        self.tau = self.T / self.N                                              # 1.0
+        self.sigma = daily_volatility * self.initial_market_price               # 0.3794
+        self.alpha = arr / yearly_trading_days * self.initial_market_price      # 0.02
+        self.epsilon = bid_ask / 2                                              # 0.0625
+        self.eta = bid_ask / (0.01 * daily_trading_volume)                      # 2.5e-06
+        self.gamma = bid_ask / (0.1 * daily_trading_volume)                     # 2.5e-07
 
-        self.kappa = self.compute_kappa()  # 0.60626 for lam = 10**(-6)
+        self.kappa = self.compute_kappa()                                       # 0.60626 for lam = 10**(-6)
 
         self.k = 1
 
@@ -74,10 +76,13 @@ class AlmgrenChrissEnvironment:
         self.P_[ind(self.k)] = self.initial_market_price
         self.x = np.zeros(shape=(self.N,))
         self.x[ind(self.k)] = self.X
+        # n_k is the number of shares sold from n_k-1 to n_k
         self.n = np.zeros(shape=(self.N,))
         self.c = np.zeros(shape=(self.N,))
         self.L = np.zeros(shape=(self.N,))
         self.L[ind(self.k)] = 1
+        self.Q = np.zeros(shape=(self.N,))
+        self.compute_Q()
         self.U = np.zeros(shape=(self.N,))
         self.compute_U()
 
@@ -107,17 +112,19 @@ class AlmgrenChrissEnvironment:
     def step(self, n=0, reward_option="madrl"):
         """
         Sets the control at the previous time step to n and steps the state forward. Returns the reward specified
-        by the reward_option parameter.
-        :param n: float: number of shares sold at k-1
+        by the reward_option parameter from k-1 to k
+        :param n: float: number of shares sold from k-1 to k (n_k)
         :param reward_option: Algos.custom/Algos.madrl/etc.
-        :return: None
+        :return: reward: float
         """
-        self.n[ind(self.k)] = n
         self.k += 1
+        self.n[ind(self.k)] = n
         self.step_inventory()
         self.step_price()
         self.step_cash()
         self.step_trades()
+        self.compute_U()
+        self.compute_Q()
         return self.get_reward(reward_option=reward_option)
 
     def step_trades(self):
@@ -128,51 +135,64 @@ class AlmgrenChrissEnvironment:
 
         :return: None
         """
-        self.L[ind(self.k)] = self.L[ind(self.k)-1] - self.tau
+        self.L[ind(self.k)] = self.L[ind(self.k)-1] - 1/self.N
 
     def step_inventory(self):
         """
         Steps the inventory forward:
 
-        X_k = X_k-1 - n_k-1 * X_k-1
+        X_k = X_k-1 - n_k * X_k-1
 
         :return: None
         """
-        self.x[ind(self.k)] = self.x[ind(self.k) - 1] - self.n[ind(self.k) - 1]
+        self.x[ind(self.k)] = self.x[ind(self.k)-1] - self.n[ind(self.k)]
 
-    def compute_h(self):
+    def compute_h(self, n_k):
         """
-        Computes and returns the h value for the E function:
+        Computes and returns the h value for the specified input, n_k
 
         h(n_k/tau) = epsilon * sgn(n_k) + eta / tau * n_k
 
+        :param: n_k: # of shares sold from k-1 to k
         :return: float
         """
-        return self.epsilon * np.sign(self.n[ind(self.k)]) + self.eta / self.tau * self.n[ind(self.k)]
+        return self.epsilon * np.sign(n_k) + self.eta / self.tau * n_k
+
+    def compute_g(self, n_k):
+        """
+        Computes and returns the g value (permanent price impact) for the specified input, n_k
+        :param n_k: # of shares sold from k-1 to k
+        :return: float
+        """
+        return self.gamma * n_k / self.tau
 
     def compute_E(self):
         """
-        Computes and returns the E value for the reward function:
+        Computes and returns the E value for the reward function from k-1 -> k:
 
-        E = sum{k=1->N}(tau * x_k * gamma * n_k / tau) + sum{k=1->N}(n_k * h(n_k/tau))
-        E = gamma * sum{k=1->N}(x_k * n_k) + sum{k=1->N}(n_k * h(n_k/tau))
+        E_x = sum_{k=1}^N tau * x_k * g(n_k/tau) + sum_{k=1}^N n_k * h(n_k/tau)
 
         :return: float
         """
-        E_1 = self.gamma * sum(np.multiply(self.x, self.n))
-        E_2 = sum(np.multiply(self.n, self.compute_h()))
-        return E_1 + E_2
+        E_x = 0
+        for k_ in range(1, self.N+1):
+            E_x += self.tau * self.x[ind(k_)] * self.compute_g(self.n[ind(k_)]) \
+                   + self.n[ind(k_)] * self.compute_h(self.n[ind(k_)])
+        return E_x
 
     def compute_V(self):
         """
         Computes and returns the V value for the reward function:
 
-        V = sigma^2 * sum{k=1->N}(tau * x_k^2)
-        V = sigma^2 * tau * sum{k=1->N}(x_k^2)
+        V_x = sigma^2 * sum_{k=1}^N tau * x_k^2
 
         :return: float
         """
-        return np.square(self.sigma) * self.tau * sum(np.square(self.x))
+        V_x = 0
+        for k_ in range(1, self.N+1):
+            V_x += self.tau * self.x[ind(k_)]**2
+        V_x = self.sigma**2 * V_x
+        return V_x
 
     def compute_U(self):
         """
@@ -183,6 +203,13 @@ class AlmgrenChrissEnvironment:
         :return: None
         """
         self.U[ind(self.k)] = self.compute_E() + self.lam * self.compute_V()
+
+    def compute_Q(self):
+        eta_tilde = self.eta - self.gamma * self.tau / 2
+        E_x_n = self.c[0] + self.x[0] * self.P_[0] - self.gamma / 2 * self.x[0] ** 2 - \
+                eta_tilde * self.tau * np.sum(np.square(self.n))
+        V_x_n = self.sigma ** 2 * self.tau * np.sum(np.square(self.x))
+        self.Q[ind(self.k)] = E_x_n - self.gamma / 2 * V_x_n
 
     def get_reward(self, reward_option="custom"):
         """
@@ -196,19 +223,15 @@ class AlmgrenChrissEnvironment:
         "madrl" reward:
         R = (U[k-1] - U[k])/U[k-1]
 
-        :return:
+        :return: float
         """
         if reward_option == Algos.custom:
             # k ranges from 1 -> N
-            if self.k == self.N:
-                eta_tilde = self.eta - self.gamma * self.tau / 2
-                E_x_n = self.c[0] + self.x[0] * self.P_[0] - self.gamma / 2 * self.x[0]**2 - \
-                    eta_tilde * self.tau * np.sum(np.square(self.n))
-                V_x_n = self.sigma**2 * self.tau * np.sum(np.square(self.x))
-                return E_x_n - self.gamma / 2 * V_x_n
+            if ind(self.k) == self.N-1:
+                return self.Q[ind(self.k)]
             return 0
+            # return (self.Q[ind(self.k)-1] - self.Q[ind(self.k)])/self.Q[ind(self.k)-1]
         elif reward_option == Algos.madrl:
-            self.compute_U()
             return (self.U[ind(self.k)-1] - self.U[ind(self.k)]) \
                    / self.U[ind(self.k)-1]
 
@@ -216,25 +239,27 @@ class AlmgrenChrissEnvironment:
         """
         Steps the price forward:
 
-        P_k = P_k-1 + sigma * sqrt(tau) * W - gamma * n_k-1
-        P_k_tilde = P_k-1 - temporary price impact (self.compute_h())
+        P_k = P_k-1 + sigma * sqrt(tau) * W - tau * g(n_k/tau)
+        P_k_tilde = P_k-1 - h(n_k/tau)
 
         next price = previous price + noise from random walk process - permanent price impact
+        next price tilde = previous price - temporary price impact
 
         :return: None
         """
-        self.P[ind(self.k)] = self.P[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - self.gamma * self.n[ind(self.k)-1]
-        self.P_[ind(self.k)] = self.P[ind(self.k)-1] - self.compute_h()
+        self.P[ind(self.k)] = self.P[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - \
+                              self.tau * self.compute_g(self.n[ind(self.k)])
+        self.P_[ind(self.k)] = self.P[ind(self.k)-1] - self.compute_h(self.n[ind(self.k)])
 
     def step_cash(self):
         """
         Steps the cash process forward:
 
-        C_k = C_k-1 + P_k-1 * n_k
+        C_k = C_k-1 + P_tilde_k-1 * n_k
 
         :return: None
         """
-        self.c[ind(self.k)] = self.c[ind(self.k) - 1] + self.P_[ind(self.k) - 1] * self.n[ind(self.k) - 1]
+        self.c[ind(self.k)] = self.c[ind(self.k)-1] + self.P_[ind(self.k)-1] * self.n[ind(self.k)]
 
     def plot_simulation(self, save_path=None):
         """

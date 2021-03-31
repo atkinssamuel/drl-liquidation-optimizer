@@ -18,20 +18,28 @@ class Directories:
 
 
 class Algos:
+    """
+    Algo types
+    """
     madrl = "madrl"
     custom = "custom"
 
 
-class DDPGHyperparameters:
-    algo                    = Algos.custom
-    clear                   = True
-    D                       = 5
-    lr                      = 0.1
-    discount                = 0.99
-    batch_size              = 1024
-    M                       = 60
-    criticLR                = 0.01
-    actorLR                 = 0.01
+class DDPGParams:
+    algo                    = Algos.custom   # algorithm to execute (Algos.madrl, Algos.custom, etc.)
+    clear                   = True          # whether to clear the results in the algorithm's directory before running
+    D                       = 10            # number of previous days in madrl formulation to keep track of
+    rho                     = 0.03          # parameter soft-update factor
+    discount                = 0.99          # discount factor in critic loss
+    batch_size              = 512           # batch size
+    M                       = 400           # number of episodes
+    criticLR                = 0.00001
+    actorLR                 = 0.00001
+    replay_buffer_size      = 10000
     checkpoint_frequency    = 20
-
+    inventory_sim_length    = 100           # length of post-training inventory simulation
+    pre_training_length     = 30            # length of pre-training reward simulation
+    post_training_length    = 30            # length of post-training reward simulation
+    training_noise          = 0.1           # initial training noise
+    decay                   = True          # True: gradient decay, float: manually set
 
