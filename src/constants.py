@@ -26,15 +26,16 @@ class Algos:
 
 
 class DDPGParams:
-    algo                    = Algos.custom   # algorithm to execute (Algos.madrl, Algos.custom, etc.)
+    algo                    = Algos.madrl   # algorithm to execute (Algos.madrl, Algos.custom, etc.)
     clear                   = True          # whether to clear the results in the algorithm's directory before running
-    D                       = 10            # number of previous days in madrl formulation to keep track of
+    D                       = 5             # number of previous days in madrl formulation to keep track of
     rho                     = 0.03          # parameter soft-update factor
     discount                = 0.99          # discount factor in critic loss
     batch_size              = 512           # batch size
     M                       = 400           # number of episodes
-    criticLR                = 0.00001
-    actorLR                 = 0.00001
+    critic_lr               = 0.00001
+    critic_weight_decay     = 0
+    actor_lr                = 0.00001
     replay_buffer_size      = 10000
     checkpoint_frequency    = 20
     inventory_sim_length    = 100           # length of post-training inventory simulation

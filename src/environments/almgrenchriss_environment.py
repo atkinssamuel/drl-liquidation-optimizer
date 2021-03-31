@@ -123,8 +123,6 @@ class AlmgrenChrissEnvironment:
         self.step_price()
         self.step_cash()
         self.step_trades()
-        self.compute_U()
-        self.compute_Q()
         return self.get_reward(reward_option=reward_option)
 
     def step_trades(self):
@@ -226,12 +224,14 @@ class AlmgrenChrissEnvironment:
         :return: float
         """
         if reward_option == Algos.custom:
+            self.compute_Q()
             # k ranges from 1 -> N
             if ind(self.k) == self.N-1:
                 return self.Q[ind(self.k)]
             return 0
             # return (self.Q[ind(self.k)-1] - self.Q[ind(self.k)])/self.Q[ind(self.k)-1]
         elif reward_option == Algos.madrl:
+            self.compute_U()
             return (self.U[ind(self.k)-1] - self.U[ind(self.k)]) \
                    / self.U[ind(self.k)-1]
 

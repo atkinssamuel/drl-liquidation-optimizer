@@ -48,8 +48,9 @@ class DDPG:
                  batch_size=1024,
                  discount_factor=0.99,
                  M=200,
-                 criticLR=0.001,
-                 actorLR=0.001,
+                 critic_lr=0.001,
+                 critic_weight_decay=0,
+                 actor_lr=0.001,
                  replay_buffer_size=10000,
                  checkpoint_frequency=20,
                  inventory_sim_length=100,
@@ -92,8 +93,8 @@ class DDPG:
         # action
         self.a = None
 
-        self.criticLR = criticLR
-        self.actorLR = actorLR
+        self.critic_lr = critic_lr
+        self.actor_lr = actor_lr
 
         # plotting parameters
         # moving average length
@@ -117,12 +118,12 @@ class DDPG:
         # critic network initialization
         self.critic = DDPGCritic(self).apply(self.layer_init_callback)
         self.critic_target = DDPGCritic(self).apply(self.layer_init_callback)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.criticLR)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.critic_lr, weight_decay=critic_weight_decay)
 
         # actor network initialization
         self.actor = DDPGActor(self).apply(self.layer_init_callback)
         self.actor_target = DDPGActor(self).apply(self.layer_init_callback)
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actorLR)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.actor_lr)
 
     def update_networks(self, current, target):
         """
@@ -318,7 +319,8 @@ class DDPG:
             total_reward = 0
             for k_ in range(self.environment.N-1):
                 noise = np.random.normal(0, self.training_noise, 1)
-                self.a = self.actor_target.forward(torch.FloatTensor(self.observation)).detach().numpy() + noise
+                with torch.no_grad():
+                    self.a = self.actor_target.forward(torch.FloatTensor(self.observation)).detach().numpy() + noise
 
                 obs, action, reward, next_obs = self.step(self.a)
                 self.add_transition(obs, action, reward, next_obs)
