@@ -17,3 +17,27 @@ The entry point of the program is ```main.py```. To execute the project, create 
 
 
 
+## Aiden Issue Closure Plan
+- Assessment of convergence based on learning curve analysis (Ali)
+- Behavioral analysis of the reward function in the face of non-stationarity (Ali)
+
+
+- Building a MARL benchmark (Sam & William, EMRMGK-1769) - **April 20th**
+	- Based on https://arxiv.org/abs/1312.7360
+	- Use PPO
+	- Explore hyper-parameter tuning:
+		- PPO component
+		- Architectural component
+	- Think about how to create over-fitting scenarios
+	- Assess stability of the reward curves
+	- Assess dependence on the number of agents in MARL
+	- Assess the effect of standardization
+- Create reward correlation matrices for assessing environment over-fitting (Sam, EMRMGK-1770) - **May 4th**
+	- Based on https://arxiv.org/abs/1711.00832
+
+
+- Employ adversarial perturbations for robustness analysis (William) - **May 4th**
+	- Based on https://arxiv.org/abs/2010.11388
+	- Implemented on single agent (use the one Sam has already produced)
+	
+
