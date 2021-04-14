@@ -2,7 +2,7 @@ import numpy as np
 import os
 import shutil
 
-from src.constants import Directories, Algos
+from ddpg.src.constants import Directories, Algos
 
 def sample_Xi(mu=0, sigma=1):
     """

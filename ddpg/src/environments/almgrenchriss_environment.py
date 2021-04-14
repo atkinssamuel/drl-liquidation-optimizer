@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.helpers import sample_Xi, ind
-from src.constants import Algos
+from ddpg.src.helpers import sample_Xi, ind
+from ddpg.src.constants import Algos
 
 
 class AlmgrenChrissEnvironment:

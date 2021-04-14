@@ -4,12 +4,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
-from src.constants import Directories
-from src.environments.almgrenchriss_environment import AlmgrenChrissEnvironment
+from ddpg.src.constants import Directories
+from ddpg.src.environments.almgrenchriss_environment import AlmgrenChrissEnvironment
 from datetime import datetime
-from src.helpers import ind
-from src.constants import Algos
-from src.models.ddpg_models import DDPGCritic, DDPGActor
+from ddpg.src.helpers import ind
+from ddpg.src.constants import Algos
+from ddpg.src.models.ddpg_models import DDPGCritic, DDPGActor
 
 
 class DDPG:

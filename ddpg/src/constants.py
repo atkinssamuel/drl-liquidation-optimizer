@@ -2,7 +2,8 @@ class Directories:
     """
     Centralized reference for the names of the directories
     """
-    results = "results/"
+    ddpg = "ddpg/"
+    results = ddpg + "results/"
 
     # madrl results
     madrl_results = results + "madrl/"

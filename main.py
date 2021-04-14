@@ -1,7 +1,6 @@
-from src.algos.ddpg import DDPG
-from src.constants import DDPGParams
-from src.helpers import clear_results
-import numpy as np
+from ddpg.src.algos.ddpg import DDPG
+from ddpg.src.constants import DDPGParams
+from ddpg.src.helpers import clear_results
 
 if __name__ == "__main__":
     clear_results(algo=DDPGParams.algo, clear=DDPGParams.clear)
