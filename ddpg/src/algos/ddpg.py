@@ -4,15 +4,35 @@ import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
-from ddpg.src.constants import Directories
-from ddpg.src.environments.almgrenchriss_environment import AlmgrenChrissEnvironment
+from shared.constants import DDPGDirectories
+from ddpg.src.environments.almgrenchriss import AlmgrenChrissEnvironment
 from datetime import datetime
-from ddpg.src.helpers import ind
-from ddpg.src.constants import Algos
+from shared.helpers import ind, delete_files_in_folder
+from shared.constants import DDPGAlgos
 from ddpg.src.models.ddpg_models import DDPGCritic, DDPGActor
 
 
 class DDPG:
+    @staticmethod
+    def clear_results(algo, clear=False):
+        """
+        Deletes the files in the directories in the results folders for the specified algorithm
+        :param: algo: Algos.madrl/Algos.custom/etc.
+        :param: clear: boolean
+        :return: None
+        """
+        if algo == DDPGAlgos.madrl and clear:
+            delete_files_in_folder(DDPGDirectories.madrl_results + DDPGDirectories.losses)
+            delete_files_in_folder(DDPGDirectories.madrl_results + DDPGDirectories.is_ma)
+            delete_files_in_folder(DDPGDirectories.madrl_results + DDPGDirectories.model_inv)
+            delete_files_in_folder(DDPGDirectories.madrl_results + DDPGDirectories.rewards)
+
+        if algo == DDPGAlgos.custom and clear:
+            delete_files_in_folder(DDPGDirectories.custom_results + DDPGDirectories.losses)
+            delete_files_in_folder(DDPGDirectories.custom_results + DDPGDirectories.is_ma)
+            delete_files_in_folder(DDPGDirectories.custom_results + DDPGDirectories.model_inv)
+            delete_files_in_folder(DDPGDirectories.custom_results + DDPGDirectories.rewards)
+
     @staticmethod
     def layer_init_callback(layer):
         """
@@ -42,7 +62,7 @@ class DDPG:
         return np.array([environment.P_[0], environment.x[0], environment.L[0]])
 
     def __init__(self,
-                 algo=Algos.madrl,
+                 algo=DDPGAlgos.madrl,
                  D=5,
                  rho=0.99,
                  batch_size=1024,
@@ -57,7 +77,8 @@ class DDPG:
                  pre_training_length=30,
                  post_training_length=30,
                  training_noise=0.1,
-                 decay=True):
+                 decay=True,
+                 clear=False):
         """
         Initializes the parameters and the state, observation, and action vectors
 
@@ -66,6 +87,9 @@ class DDPG:
         - Therefore, k will range from 1 -> N and arrays will be indexed by calling the ind(k) callback
             - k = 1 corresponds to the 0-th element in an array
         """
+        # clearing results
+        self.clear_results(algo=algo, clear=clear)
+
         # initializing a new environment
         self.environment = AlmgrenChrissEnvironment()
 
@@ -81,12 +105,12 @@ class DDPG:
         # algo type
         self.algo = algo
         self.observation = None
-        if self.algo == Algos.madrl:
+        if self.algo == DDPGAlgos.madrl:
             self.observation = self.init_madrl_obs(self.D)
-            self.algo_results = Directories.madrl_results
-        elif self.algo == Algos.custom:
+            self.algo_results = DDPGDirectories.madrl_results
+        elif self.algo == DDPGAlgos.custom:
             self.observation = self.init_custom_obs(self.environment)
-            self.algo_results = Directories.custom_results
+            self.algo_results = DDPGDirectories.custom_results
 
         # reward
         self.R = None
@@ -142,8 +166,8 @@ class DDPG:
         :return: None
         """
         self.observation[:self.D] = self.observation[1:self.D + 1]
-        self.observation[self.D] = np.log(self.environment.P_[ind(self.environment.k)] /
-                                          self.environment.P_[ind(self.environment.k)-1])
+        self.observation[self.D] = np.log(self.environment.S_tilde[ind(self.environment.k)] /
+                                          self.environment.S_tilde[ind(self.environment.k)-1])
 
     def get_m(self):
         """
@@ -164,11 +188,11 @@ class DDPG:
         Updates the observation vector using the previously defined "get" equations and returns the updated observation
         :return: observation vector
         """
-        if self.algo == Algos.custom:
+        if self.algo == DDPGAlgos.custom:
             self.observation[0] = self.environment.P_[self.environment.k - 1]
             self.observation[1] = self.environment.x[self.environment.k - 1]
             self.observation[2] = self.environment.L[self.environment.k - 1]
-        elif self.algo == Algos.madrl:
+        elif self.algo == DDPGAlgos.madrl:
             if self.environment.k != 1:
                 self.get_r()
             self.get_m()
@@ -236,9 +260,9 @@ class DDPG:
         for i in range(length):
             self.environment = AlmgrenChrissEnvironment()
             total_reward = 0
-            if self.algo == Algos.madrl:
+            if self.algo == DDPGAlgos.madrl:
                 self.observation = self.init_madrl_obs(self.D)
-            elif self.algo == Algos.custom:
+            elif self.algo == DDPGAlgos.custom:
                 self.observation = self.init_custom_obs(self.environment)
 
             for k_ in range(self.environment.N-1):
@@ -264,9 +288,9 @@ class DDPG:
         q_n_sim = None
         for i in range(self.inventory_sim_length):
             self.environment = AlmgrenChrissEnvironment()
-            if self.algo == Algos.madrl:
+            if self.algo == DDPGAlgos.madrl:
                 self.observation = self.init_madrl_obs(self.D)
-            elif self.algo == Algos.custom:
+            elif self.algo == DDPGAlgos.custom:
                 self.observation = self.init_custom_obs(self.environment)
 
             for k_ in range(self.environment.N-1):
@@ -285,7 +309,7 @@ class DDPG:
         plt.ylabel("Inventory")
         plt.grid(True)
         plt.legend()
-        plt.savefig(self.algo_results + Directories.model_inv + f"inventory-{date_str}.png")
+        plt.savefig(self.algo_results + DDPGDirectories.model_inv + f"inventory-{date_str}.png")
         plt.clf()
 
         rewards_list = []
@@ -392,7 +416,7 @@ class DDPG:
         for axis in axes.flat:
             axis.grid(True)
 
-        plt.savefig(self.algo_results + Directories.losses + f"losses-{date_str}.png")
+        plt.savefig(self.algo_results + DDPGDirectories.losses + f"losses-{date_str}.png")
         plt.clf()
 
         plt.plot(np.arange(len(is_list)), np.array(is_list),
@@ -404,7 +428,7 @@ class DDPG:
         plt.ylabel("Implementation Shortfall")
         plt.grid(True)
         plt.legend()
-        plt.savefig(self.algo_results + Directories.is_ma + f"is-ma-{date_str}.png")
+        plt.savefig(self.algo_results + DDPGDirectories.is_ma + f"is-ma-{date_str}.png")
         plt.clf()
         plt.close()
 
@@ -427,14 +451,14 @@ class DDPG:
         plt.plot(np.arange(final_ind), np.ones(shape=(final_ind,))*analytical_average_reward,
                  linestyle="dashed", color="brown",
                  label="Analytical Solution Average Reward")
-        if self.algo == Algos.madrl:
+        if self.algo == DDPGAlgos.madrl:
             plt.ylim(bottom=-7, top=-2)
         plt.title("Reward")
         plt.xlabel("Episode")
         plt.ylabel("Total Reward")
         plt.grid(True)
         plt.legend()
-        plt.savefig(self.algo_results + Directories.rewards + f"reward-{date_str}.png")
+        plt.savefig(self.algo_results + DDPGDirectories.rewards + f"reward-{date_str}.png")
         plt.clf()
         plt.close()
 
