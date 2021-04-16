@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from shared.helpers import sample_Xi, ind
+from shared.shared_utils import sample_Xi, ind
 from shared.constants import DDPGAlgos
 
 

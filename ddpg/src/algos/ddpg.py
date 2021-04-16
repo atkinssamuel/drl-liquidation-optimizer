@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from shared.constants import DDPGDirectories
 from ddpg.src.environments.almgrenchriss import AlmgrenChrissEnvironment
 from datetime import datetime
-from shared.helpers import ind, delete_files_in_folder
+from shared.shared_utils import ind, delete_files_in_folder
 from shared.constants import DDPGAlgos
 from ddpg.src.models.ddpg_models import DDPGCritic, DDPGActor
 

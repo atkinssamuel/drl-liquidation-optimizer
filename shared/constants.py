@@ -27,6 +27,9 @@ class DDPGAlgos:
 
 
 class DDPGParams:
+    """
+    Contains all of the hyper-parameters for the DDPG algorithm
+    """
     algo                    = DDPGAlgos.madrl   # algorithm to execute (Algos.madrl, Algos.custom, etc.)
     clear                   = True              # boolean that determines if we clear the DDPG results folder
     D                       = 5                 # number of previous days in madrl formulation to keep track of
@@ -47,10 +50,32 @@ class DDPGParams:
 
 
 class PPODirectories:
+    """
+    Contains all of the directories for the PPO implementation
+    """
     ppo = "ppo/"
     results = ppo + "results/"
+    rewards = results + "rewards/"
+    models = ppo + "models/"
 
 
-class PPOParams:
+class PPOEnvParams:
+    """
+    Contains all of the hyper-parameters for the environment used by the PPO algorithm
+    """
     clear                   = True          # whether to clear the results in the algorithm's directory before running
     D                       = 5             # number of previous time instances to consider in the observation space
+
+
+class PPOAgentParams:
+    """
+    Contains all of the hyper-parameters for the PPO agent(s)
+    """
+    alpha                   = 0.0003    #
+    epochs                  = 4         #
+    batch_size              = 5         #
+    gae_lambda              = 0.95      #
+    policy_clip             = 0.2       #
+    gamma                   = 0.99      #
+    episodes                = 500       #
+    update_frequency        = 20        #

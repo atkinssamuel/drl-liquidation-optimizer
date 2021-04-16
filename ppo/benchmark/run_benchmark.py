@@ -2,7 +2,7 @@ import gym
 import numpy as np
 from ppo.benchmark.ppo_torch import Agent
 from ppo.benchmark.utils import plot_learning_curve
-from ppo.environments.sa_almgrenchriss_discrete import SingleAgentAlmgrenChrissDiscrete
+from ppo.environments.sa_almgrenchriss import SingleAgentAlmgrenChrissDiscrete
 
 if __name__ == '__main__':
     num_increments = 1000

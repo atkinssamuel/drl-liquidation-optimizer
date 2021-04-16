@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from gym.spaces import Box
-from shared.helpers import ind, sample_Xi
+from shared.shared_utils import ind, sample_Xi
 
 
 class SingleAgentAlmgrenChriss(gym.Env):
@@ -113,7 +113,7 @@ class SingleAgentAlmgrenChriss(gym.Env):
 
         done = False
         if ind(self.k) == self.N-1 or self.x[ind(self.k)] < 1:
-            reward = np.average(self.R) + self.gamma / 2 * np.var(self.R)
+            reward = np.average(self.R) - self.gamma / 2 * np.var(self.R)
             done = True
 
         info = {}
