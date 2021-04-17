@@ -42,9 +42,14 @@ class SingleAgentAlmgrenChriss(gym.Env):
     - To go from k to k + 1, we liquidate n_k shares
         - n_k is the number of shares liquidated from k-1 to k
     """
-    def __init__(self, D):
+    def __init__(self, D, increments=None):
         # action space is continuous and 1-dimensional for a single agent
-        self.action_space = Box(low=0, high=1, shape=(1,), dtype=np.float32)
+        if increments is not None:
+            self.increments = increments
+            self.action_space = Box(low=0, high=1, shape=(increments,), dtype=np.float32)
+        else:
+            self.increments = None
+            self.action_space = Box(low=0, high=1, shape=(1,), dtype=np.float32)
 
         # observation space for state-space formulation from MADRL paper is D + 3
         self.D = D
@@ -97,7 +102,12 @@ class SingleAgentAlmgrenChriss(gym.Env):
         self.L = 1
 
     def step(self, action):
-        self.n[ind(self.k)] = action * self.x[ind(self.k)]
+        if self.increments is not None:
+            num_shares = action / self.increments * self.x[ind(self.k)]
+        else:
+            num_shares = action * self.x[ind(self.k)]
+
+        self.n[ind(self.k)] = num_shares
         self.k += 1
         self.step_inventory()
         self.step_price()

@@ -37,14 +37,14 @@ def delete_files_in_folder(folder):
             print('Failed to delete %s. Reason: %s' % (file_path, e))
 
 
-def plot_learning_curve(x, scores, figure_file):
-    ma_length = 100
-    running_avg = np.zeros(len(scores))
-    for i in range(len(running_avg)):
-        running_avg[i] = np.mean(scores[max(0, i-ma_length):(i+1)])
+def plot_learning_curve(rewards, moving_average_length, figure_file):
+    rewards_ma = np.zeros(len(rewards))
+    for i in range(len(rewards_ma)):
+        rewards_ma[i] = np.mean(rewards[max(0, i-moving_average_length):(i+1)])
 
-    plt.plot(x, running_avg, label=f"{ma_length} Day Moving Average", color="darkgoldenrod")
+    plt.plot(np.arange(rewards_ma.shape[0]), rewards_ma, label=f"{moving_average_length} Day Moving Average", color="darkgoldenrod")
     plt.grid()
     plt.legend()
-    plt.title('Reward Plot vs. Episode')
+    plt.title('Moving Average Rewards Plot vs. Episodes')
     plt.savefig(figure_file)
+    plt.close()

@@ -57,7 +57,9 @@ class PPODirectories:
     results = ppo + "results/"
     rewards = results + "rewards/"
     models = ppo + "models/"
-
+    tuning = results + "tuning/"
+    discrete = ppo + "src/discrete/"
+    discrete_rewards = discrete + "results/rewards/"
 
 class PPOEnvParams:
     """
@@ -65,7 +67,7 @@ class PPOEnvParams:
     """
     clear                   = True          # whether to clear the results in the algorithm's directory before running
     D                       = 5             # number of previous time instances to consider in the observation space
-
+    increments              = 1000          # number of increments assuming a discrete action space
 
 class PPOAgentParams:
     """
@@ -77,5 +79,7 @@ class PPOAgentParams:
     gae_lambda              = 0.95      #
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
-    episodes                = 500       #
+    episodes                = 1000      #
     update_frequency        = 20        #
+    moving_average_length   = 5         #
+    checkpoint_frequency    = 20        #

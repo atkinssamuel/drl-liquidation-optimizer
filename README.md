@@ -43,3 +43,7 @@ To execute either of these programs in PyCharm, create a PyCharm configuration t
 	- Implemented on single agent (use the one Sam has already produced)
 	
 
+
+#### Resources
+- https://www.youtube.com/watch?v=kWHSH2HgbNQ
+- https://www.youtube.com/watch?v=2Epn__SRHns

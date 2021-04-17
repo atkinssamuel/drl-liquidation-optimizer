@@ -1,7 +1,7 @@
 import gym
 import numpy as np
-from ppo.benchmark.ppo_torch import Agent
-from ppo.benchmark.utils import plot_learning_curve
+from ppo.discrete_benchmark.ppo_torch import Agent
+from ppo.discrete_benchmark.utils import plot_learning_curve
 from ppo.environments.sa_almgrenchriss import SingleAgentAlmgrenChrissDiscrete
 
 if __name__ == '__main__':

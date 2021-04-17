@@ -30,10 +30,12 @@ class PPOAgent:
         self.memory.store_memory(state, action, probs, vals, reward, done)
 
     def save_models(self):
+        print('... saving models ...')
         self.actor.save_checkpoint()
         self.critic.save_checkpoint()
 
     def load_models(self):
+        print('... loading models ...')
         self.actor.load_checkpoint()
         self.critic.load_checkpoint()
 
@@ -44,7 +46,7 @@ class PPOAgent:
 
         sigma = torch.sqrt(var)
         action = torch.normal(mu, sigma)
-        action = torch.clamp(action, 0, 1)
+        action = torch.clamp(action, -1, 1)
 
         p1 = -((mu - action) ** 2)/(2 * var.clamp(min=1e-3))
         p2 = - torch.log(torch.sqrt(2 * math.pi * var))
