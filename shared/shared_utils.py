@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 import os
 import shutil
@@ -48,3 +50,16 @@ def plot_learning_curve(rewards, moving_average_length, figure_file):
     plt.title('Moving Average Rewards Plot vs. Episodes')
     plt.savefig(figure_file)
     plt.close()
+
+
+def copy_attributes(copy_from, copy_to):
+    """
+    Copies all of the attributes from the "copy_from" object to the "copy_to" object
+    :param copy_from: object
+    :param copy_to: object
+    :return: None
+    """
+    for n, v in inspect.getmembers(copy_from):
+        if "__" in n:
+            continue
+        setattr(copy_to, n, v)

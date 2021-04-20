@@ -61,17 +61,22 @@ class PPODirectories:
     discrete = ppo + "src/discrete/"
     discrete_rewards = discrete + "results/rewards/"
 
-class PPOEnvParams:
+
+class PPOTrainingParams:
     """
     Contains all of the hyper-parameters for the environment used by the PPO algorithm
     """
+    episodes                = 200           #
+    update_frequency        = 20            #
+    moving_average_length   = 5             #
+    checkpoint_frequency    = 20            #
+    reward_file_name        = "rewards.png" #
     clear                   = True          # whether to clear the results in the algorithm's directory before running
-    D                       = 5             # number of previous time instances to consider in the observation space
-    increments              = 1000          # number of increments assuming a discrete action space
 
-class PPOAgentParams:
+
+class PPOAgent1Params:
     """
-    Contains all of the hyper-parameters for the PPO agent(s)
+    Contains all of the hyper-parameters specific to PPO agent 1
     """
     alpha                   = 0.0003    #
     epochs                  = 4         #
@@ -79,7 +84,21 @@ class PPOAgentParams:
     gae_lambda              = 0.95      #
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
-    episodes                = 1000      #
-    update_frequency        = 20        #
-    moving_average_length   = 5         #
-    checkpoint_frequency    = 20        #
+    X                       = 1e6       # initial inventory for the simulation
+    risk_aversion           = 1e-6      # risk aversion parameter
+    D                       = 5         # number of previous time instances to consider in the observation space
+
+
+class PPOAgent2Params:
+    """
+    Contains all of the hyper-parameters specific to PPO agent 2
+    """
+    alpha                   = 0.0003    #
+    epochs                  = 4         #
+    batch_size              = 5         #
+    gae_lambda              = 0.95      #
+    policy_clip             = 0.2       #
+    gamma                   = 0.99      #
+    X                       = 1e6       # initial inventory for the simulation
+    risk_aversion           = 1e-6      # risk aversion parameter
+    D                       = 5         # number of previous time instances to consider in the observation space

@@ -6,7 +6,7 @@ from gym.spaces import Box
 from shared.shared_utils import ind, sample_Xi
 
 
-class SingleAgentAlmgrenChriss(gym.Env):
+class MultiAgentAlmgrenChriss(gym.Env):
     """
     Initial Parameters:
     Real-World Example: Optimal Execution of Portfolio Transactions -  Robert Almgren and Neil Chriss
@@ -42,23 +42,22 @@ class SingleAgentAlmgrenChriss(gym.Env):
     - To go from k to k + 1, we liquidate n_k shares
         - n_k is the number of shares liquidated from k-1 to k
     """
-    def __init__(self, D=5, initial_inventory=1e6, risk_aversion=1e-6, increments=None):
-        # action space is continuous and 1-dimensional for a single agent
-        if increments is not None:
-            self.increments = increments
-            self.action_space = Box(low=0, high=1, shape=(increments,), dtype=np.float32)
-        else:
-            self.increments = None
-            self.action_space = Box(low=0, high=1, shape=(1,), dtype=np.float32)
-
-        self.risk_aversion = risk_aversion
+    def __init__(self, *D):
+        self.num_agents = len(D)
+        # action space is continuous and 1-dimensional for a single agent, # agents-dimensional for multi-agent
+        self.action_space = Box(low=0, high=1, shape=(self.num_agents,), dtype=np.float32)
 
         # observation space for state-space formulation from MADRL paper is D + 3
-        self.D = D
-        self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.D+3,), dtype=np.float32)
+        total_D = sum(D)
+        self.observation_space = Box(low=-np.inf, high=np.inf, shape=((total_D+3*self.num_agents),), dtype=np.float32)
 
         # initialize the state to [0, 0, ..., 0] (length D+1) + [1, 1]
-        self.state = np.hstack((np.zeros(shape=(self.D+1)), [1, 1]))
+        for i in range(len(D)):
+            D_state = np.hstack((np.zeros(shape=(D[i]+1)), [1, 1]))
+            if i == 0:
+                self.state = D_state
+            else:
+                self.state = np.hstack((self.state, D_state))
 
         self.initial_market_price = 50
         volatility = 0.12
@@ -67,7 +66,6 @@ class SingleAgentAlmgrenChriss(gym.Env):
         yearly_trading_days = 250
         self.T = 60
         self.N = 60
-        self.X = initial_inventory
         self.lam = 1.2 * 10 ** (-6)
 
         bid_ask = 1 / 8
@@ -90,62 +88,88 @@ class SingleAgentAlmgrenChriss(gym.Env):
         self.S_tilde = np.zeros(shape=(self.N,))
         self.S_tilde[ind(self.k)] = self.initial_market_price
 
-        # inventory
-        self.x = np.zeros(shape=(self.N,))
-        self.x[ind(self.k)] = self.X
-
-        # n_k-1 is the number of shares sold at k-1
+        # n_k-1 is the total number of shares sold across all agents at k-1
         self.n = np.zeros(shape=(self.N,))
 
-        # revenue
-        self.R = np.zeros(shape=(self.N,))
+    def step(self, multi_agent_action_dict):
+        """
+        **kwargs must
+        :param multi_agent_action_dict: dictionary containing {'actions': [action_1, action_2, ...],
+                                                               'agents': [agent_1, agent_2, ...]}
+        :return: multi_agent_step_dict: dictionary containing {'state': state,
+                                                               'rewards': [reward_1, reward_2, ...],
+                                                               'dones': [done_1, done_2, ...],
+                                                               'infos': [info_1, info_2, ...]}
+        """
+        selling_array = []
+        dones = multi_agent_action_dict['dones']
+        # for each agent
+        observation_index = 0
+        for i in range(self.num_agents):
+            if dones[i]:
+                continue
+            agent = multi_agent_action_dict['agents'][i]
+            action = multi_agent_action_dict['actions'][i]
 
-        # normalized number of remaining trades [0, 1]
-        self.L = 1
-
-    def step(self, action):
-        if self.increments is not None:
-            # liquidating all shares if we are at the final time step
-            if (ind(self.k) + 1) == (self.N - 1):
-                action = self.increments
-            num_shares = action / self.increments * self.x[ind(self.k)]
-        else:
-            # liquidating all shares if we are at the final time step
             if (ind(self.k) + 1) == (self.N - 1):
                 action = 1
-            num_shares = action * self.x[ind(self.k)]
 
-        self.n[ind(self.k)] = num_shares
+            num_shares = action * agent.x[ind(self.k)]
+            new_revenue = self.S_tilde[ind(self.k)] * num_shares
+            agent.n[ind(self.k)] = num_shares
+            agent.step_inventory(self.k+1)
+            agent.step_revenue(self.k+1, new_revenue)
+            agent.step_trades(self.k+1)
+
+            selling_array.append(num_shares)
+
+        self.n[ind(self.k)] = sum(selling_array)
         self.k += 1
-        self.step_inventory()
         self.step_price()
-        self.step_cash()
-        self.step_trades()
 
-        self.state[:self.D] = self.state[1:self.D + 1]
-        self.state[self.D] = np.log(self.S_tilde[ind(self.k)]/self.S_tilde[ind(self.k)-1])
-        self.state[-2] = (self.N - ind(self.k) * self.tau)/self.N
-        self.state[-1] = self.x[ind(self.k)]/self.X
+        for i in range(self.num_agents):
+            if dones[i]:
+                continue
+            agent = multi_agent_action_dict['agents'][i]
+            D = agent.D
+            next_observation_index = observation_index + D + 3
+            self.state[observation_index:observation_index+D] = self.state[observation_index+1:observation_index+D+1]
+            self.state[observation_index+D] = np.log(self.S_tilde[ind(self.k)]/self.S_tilde[ind(self.k)-1])
+            self.state[observation_index+D+1] = (self.N - ind(self.k) * self.tau)/self.N
+            self.state[observation_index+D+2] = agent.x[ind(self.k)]/agent.X
+            observation_index = next_observation_index
 
-        reward = 0
+        multi_agent_step_dict = {
+            'state': self.state,
+            'rewards': [0 for _ in range(self.num_agents)],
+            'dones': [False for _ in range(self.num_agents)],
+            'infos': [{} for _ in range(self.num_agents)]
+        }
 
-        done = False
-        if ind(self.k) == self.N-1 or self.x[ind(self.k)] < 1:
-            self.R[ind(self.k):] = np.ones(len(self.R) - ind(self.k)) * self.R[ind(self.k)]
-            reward = np.average(self.R) - self.risk_aversion / 2 * np.var(self.R)
-            done = True
+        for i in range(self.num_agents):
+            if dones[i]:
+                multi_agent_step_dict['dones'][i] = True
+                continue
+            agent = multi_agent_action_dict['agents'][i]
+            if ind(self.k) == self.N-1 or agent.x[ind(self.k)] < 1:
+                agent.R[ind(self.k):] = np.ones(len(agent.R) - ind(self.k)) * agent.R[ind(self.k)]
+                multi_agent_step_dict['rewards'][i] = np.average(agent.R) - agent.risk_aversion / 2 * np.var(agent.R)
+                multi_agent_step_dict['dones'][i] = True
 
-        info = {}
+        return multi_agent_step_dict
 
-        return self.state, reward, done, info
-
-    def reset(self):
+    def reset(self, *agents):
         """
         Resets the state according to the parameters set while instantiating the class
         :return: state
         """
         # initialize the state to [0, 0, ..., 0] (length D+1) + [1, 1]
-        self.state = np.hstack((np.zeros(shape=(self.D+1)), [1, 1]))
+        for i in range(len(agents)):
+            D_state = np.hstack((np.zeros(shape=(agents[i].D + 1)), [1, 1]))
+            if i == 0:
+                self.state = D_state
+            else:
+                self.state = np.hstack((self.state, D_state))
 
         self.k = 1
 
@@ -155,18 +179,8 @@ class SingleAgentAlmgrenChriss(gym.Env):
         self.S_tilde = np.zeros(shape=(self.N,))
         self.S_tilde[ind(self.k)] = self.initial_market_price
 
-        # inventory
-        self.x = np.zeros(shape=(self.N,))
-        self.x[ind(self.k)] = self.X
-
-        # n_k-1 is the number of shares sold at k-1
-        self.n = np.zeros(shape=(self.N,))
-
-        # revenue
-        self.R = np.zeros(shape=(self.N,))
-
-        # normalized number of remaining trades [0, 1]
-        self.L = 1
+        for agent in agents:
+            agent.reset()
 
         return self.state
 
@@ -203,26 +217,6 @@ class SingleAgentAlmgrenChriss(gym.Env):
         plt.pause(2)
         plt.close()
 
-    def step_trades(self):
-        """
-        Steps the normalized number of trades left forward
-
-        L_k = L_k-1 - 1 / N
-
-        :return: None
-        """
-        self.L -= 1 / self.N
-
-    def step_inventory(self):
-        """
-        Steps the inventory forward:
-
-        X_k = X_k-1 - n_k-1
-
-        :return: None
-        """
-        self.x[ind(self.k)] = self.x[ind(self.k)-1] - self.n[ind(self.k)-1]
-
     def step_price(self):
         """
         Steps the price forward:
@@ -239,15 +233,7 @@ class SingleAgentAlmgrenChriss(gym.Env):
                               self.tau * self.compute_g(self.n[ind(self.k)-1])
         self.S_tilde[ind(self.k)] = self.S[ind(self.k)] - self.compute_h(self.n[ind(self.k)-1])
 
-    def step_cash(self):
-        """
-        Steps the cash process forward:
 
-        C_k = C_k-1 + P_tilde_k-1 * n_k-1
-
-        :return: None
-        """
-        self.R[ind(self.k)] = self.R[ind(self.k) - 1] + self.S_tilde[ind(self.k) - 1] * self.n[ind(self.k) - 1]
 
     def compute_kappa(self):
         """
