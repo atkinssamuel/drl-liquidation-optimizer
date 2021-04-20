@@ -87,8 +87,8 @@ class PPOAgent1Params:
     gae_lambda              = 0.95      #
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
-    X                       = 1e6       # initial inventory for the simulation
-    risk_aversion           = 1e-6      # risk aversion parameter
+    X                       = 3e5       # initial inventory for the simulation
+    risk_aversion           = 1e-8      # risk aversion parameter
     D                       = 5         # number of previous time instances to consider in the observation space
 
 
@@ -103,9 +103,9 @@ class PPOAgent2Params:
     gae_lambda              = 0.95      #
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
-    X                       = 2e6       # initial inventory for the simulation
+    X                       = 3e5       # initial inventory for the simulation
     risk_aversion           = 1e-6      # risk aversion parameter
-    D                       = 7         # number of previous time instances to consider in the observation space
+    D                       = 5         # number of previous time instances to consider in the observation space
 
 
 class PPOAgent3Params:
@@ -119,6 +119,6 @@ class PPOAgent3Params:
     gae_lambda              = 0.95      #
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
-    X                       = 1e6       # initial inventory for the simulation
-    risk_aversion           = 1e-6      # risk aversion parameter
+    X                       = 3e5       # initial inventory for the simulation
+    risk_aversion           = 1e-4      # risk aversion parameter
     D                       = 5         # number of previous time instances to consider in the observation space

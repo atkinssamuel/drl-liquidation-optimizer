@@ -68,7 +68,7 @@ class MultiAgentAlmgrenChriss:
         yearly_trading_days = 250
         self.T = 60
         self.N = 60
-        self.lam = 1.2 * 10 ** (-6)
+        self.lam = 1e-9
 
         bid_ask = 1 / 8
         daily_volatility = volatility / np.sqrt(yearly_trading_days)  # 0.007589
@@ -247,8 +247,7 @@ class MultiAgentAlmgrenChriss:
         :return: None
         """
         # S_0(t) = S_0 + sigma * W(t) + drift
-        self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() + \
-                              self.alpha * self.S[ind(self.k)-1]
+        self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() + self.alpha
 
         # S{X1, ..., XN}(t) = S_0(t) + gamma * total permanent price impact
         self.S[ind(self.k)] = self.S[ind(self.k)] + self.gamma * total_permanent_price_impact
