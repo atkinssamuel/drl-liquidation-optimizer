@@ -12,7 +12,7 @@ from shared.constants import PPODirectories
 from shared.shared_utils import ind, sample_Xi
 
 
-class MultiAgentAlmgrenChriss(gym.Env):
+class MultiAgentAlmgrenChriss:
     """
     Initial Parameters:
     Real-World Example: Optimal Execution of Portfolio Transactions -  Robert Almgren and Neil Chriss
@@ -94,9 +94,6 @@ class MultiAgentAlmgrenChriss(gym.Env):
         self.S_tilde = np.zeros(shape=(self.N,))
         self.S_tilde[ind(self.k)] = self.initial_market_price
 
-        # n_k-1 is the total number of shares sold across all agents at k-1
-        self.n = np.zeros(shape=(self.N,))
-
     def step(self, multi_agent_action_dict):
         """
         **kwargs must
@@ -107,14 +104,18 @@ class MultiAgentAlmgrenChriss(gym.Env):
                                                                'dones': [done_1, done_2, ...],
                                                                'infos': [info_1, info_2, ...]}
         """
-        selling_array = []
         dones = multi_agent_action_dict['dones']
         # for each agent
         observation_index = 0
+        total_permanent_price_impact = 0
+        total_temporary_price_impact = 0
         for i in range(self.num_agents):
-            if dones[i]:
-                continue
             agent = multi_agent_action_dict['agents'][i]
+
+            if dones[i]:
+                total_permanent_price_impact += -agent.X
+                continue
+
             action = multi_agent_action_dict['actions'][i]
 
             if (ind(self.k) + 1) == (self.N - 1):
@@ -127,11 +128,12 @@ class MultiAgentAlmgrenChriss(gym.Env):
             agent.step_revenue(self.k+1, new_revenue)
             agent.step_trades(self.k+1)
 
-            selling_array.append(num_shares)
+            total_permanent_price_impact += agent.x[ind(self.k)+1] - agent.X
+            total_temporary_price_impact -= num_shares
 
-        self.n[ind(self.k)] = sum(selling_array)
         self.k += 1
-        self.step_price()
+        self.step_price(total_permanent_price_impact=total_permanent_price_impact,
+                        total_temporary_price_impact=total_temporary_price_impact)
 
         for i in range(self.num_agents):
             if dones[i]:
@@ -239,21 +241,24 @@ class MultiAgentAlmgrenChriss(gym.Env):
 
         return filename
 
-    def step_price(self):
+    def step_price(self, total_permanent_price_impact, total_temporary_price_impact):
         """
         Steps the price forward:
 
-        S_k = S_k-1 + sigma * sqrt(tau) * W - tau * g(n_k/tau)
-        S_k_tilde = S_k-1 - h(n_k/tau)
-
-        next price = previous price + noise from random walk process - permanent price impact
-        next price tilde = previous price - temporary price impact
+        S_0(t) = S_0 + sigma * W(t) + drift
+        S{X1, ..., XN}(t) = S_0(t) + gamma * total permanent price impact + lambda * total temporary price impact
 
         :return: None
         """
-        self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - \
-                              self.tau * self.compute_g(self.n[ind(self.k)-1])
-        self.S_tilde[ind(self.k)] = self.S[ind(self.k)] - self.compute_h(self.n[ind(self.k)-1])
+        # S_0(t) = S_0 + sigma * W(t) + drift
+        self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() + \
+                              self.alpha * self.S[ind(self.k)-1]
+
+        # S{X1, ..., XN}(t) = S_0(t) + gamma * total permanent price impact
+        self.S[ind(self.k)] = self.S[ind(self.k)] + self.gamma * total_permanent_price_impact
+
+        # S{X1, ..., XN}(t) = S{X1, ..., XN}(t)  + total temporary price impact
+        self.S_tilde[ind(self.k)] = self.S[ind(self.k)] + self.lam * total_temporary_price_impact
 
     def compute_kappa(self):
         """

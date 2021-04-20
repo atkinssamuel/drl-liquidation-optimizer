@@ -112,7 +112,7 @@ class PPOAgent:
         action = torch.clamp(action, 0, 1)
 
         p1 = -((mu - action) ** 2) / (2 * var.clamp(min=1e-3))
-        p2 = - torch.log(torch.sqrt(2 * math.pi * var))
+        p2 = -torch.log(torch.sqrt(2 * math.pi * var))
         prob = torch.exp(p1 + p2)
 
         value = self.critic(state)
