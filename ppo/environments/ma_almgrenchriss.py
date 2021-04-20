@@ -1,8 +1,14 @@
+import os
+
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.animation as anim
 
 from gym.spaces import Box
+
+from shared.constants import PPODirectories
 from shared.shared_utils import ind, sample_Xi
 
 
@@ -184,38 +190,54 @@ class MultiAgentAlmgrenChriss(gym.Env):
 
         return self.state
 
-    def render(self):
+    def render(self, agents, episode):
         """
-        Renders an episode and illustrates the price process, cash balance, shares sold/iteration, and inventory
+        Renders an episode and illustrates the price process as well as the inventory and revenue processes for all of
+        the agents involved
         :return: None
         """
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        fig.suptitle("Simulation Plot")
+        fig = plt.figure(figsize=(12, 12))
+        fig.suptitle(f"Episode {episode}")
+        gs = gridspec.GridSpec(2, 2)
 
         a_thousand = 1000
         a_million = 1000000
-        axes[0, 0].plot(self.step_array * self.tau, self.S_tilde)
-        axes[0, 0].set(ylabel="Price")
 
-        axes[0, 1].plot(self.step_array * self.tau, self.R / a_million, label="Cash Balance")
-        axes[0, 1].plot(self.step_array * self.tau, np.ones(self.N, ) * self.initial_market_price * self.X / a_million,
-                        label="Portfolio Value")
-        axes[0, 1].legend()
-        axes[0, 1].set(ylabel="Balance ($M)")
+        # Price Process
+        ax = plt.subplot(gs[0, 0])
+        ax.set(title="Price Process")
+        plt.plot(self.step_array * self.tau, self.S_tilde, label="Price Including Temporary Price Impact")
+        plt.plot(self.step_array * self.tau, self.S, label="Price")
+        plt.legend()
+        ax.set(ylabel="Price")
+        ax.grid(True)
 
-        # removed final value (accounting for the fact that you can't sell any more shares at the final time step)
-        axes[1, 0].plot(self.step_array[:-1] * self.tau, self.n[:-1], color="m")
-        axes[1, 0].set(xlabel="Time", ylabel="Shares Sold/Iteration")
+        # Revenue Process
+        ax = plt.subplot(gs[0, 1])
+        ax.set(title="Revenue Process")
+        for a in range(len(agents)):
+            plt.plot(self.step_array * self.tau, agents[a].R / a_thousand, label=f"Agent {a+1}")
+        plt.legend()
+        ax.grid(True)
+        ax.set(ylabel="Revenue ($k)")
+        ax.set(xlabel="Time Step")
 
-        axes[1, 1].plot(self.step_array * self.tau, self.x / a_thousand, color="orange")
-        axes[1, 1].set(ylabel="Inventory (k)")
+        # Inventory Process
+        ax = plt.subplot(gs[1, :])
+        ax.set(title="Inventory Process")
+        for a in range(len(agents)):
+            plt.plot(self.step_array * self.tau, agents[a].x / a_million, label=f"Agent {a+1}")
+        plt.legend()
+        ax.grid(True)
+        ax.set(ylabel="Inventory (M)")
+        ax.set(xlabel="Time Step")
 
-        for axis in axes.flat:
-            axis.grid(True)
+        filename = PPODirectories.tmp + f"episode-{episode}-simulation.png"
 
-        plt.show(block=False)
-        plt.pause(2)
+        plt.savefig(filename)
         plt.close()
+
+        return filename
 
     def step_price(self):
         """
@@ -232,8 +254,6 @@ class MultiAgentAlmgrenChriss(gym.Env):
         self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() - \
                               self.tau * self.compute_g(self.n[ind(self.k)-1])
         self.S_tilde[ind(self.k)] = self.S[ind(self.k)] - self.compute_h(self.n[ind(self.k)-1])
-
-
 
     def compute_kappa(self):
         """

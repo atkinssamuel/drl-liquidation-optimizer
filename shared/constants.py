@@ -54,30 +54,33 @@ class PPODirectories:
     Contains all of the directories for the PPO implementation
     """
     ppo = "ppo/"
+    src = ppo + "src/"
     results = ppo + "results/"
     rewards = results + "rewards/"
     models = ppo + "models/"
     tuning = results + "tuning/"
     discrete = ppo + "src/discrete/"
     discrete_rewards = discrete + "results/rewards/"
+    tmp = ppo + "tmp/"
 
 
 class PPOTrainingParams:
     """
     Contains all of the hyper-parameters for the environment used by the PPO algorithm
     """
-    episodes                = 200           #
-    update_frequency        = 20            #
-    moving_average_length   = 5             #
-    checkpoint_frequency    = 20            #
-    reward_file_name        = "rewards.png" #
-    clear                   = True          # whether to clear the results in the algorithm's directory before running
+    episodes                = 500               #
+    update_frequency        = 20                #
+    moving_average_length   = 5                 #
+    checkpoint_frequency    = 5                 #
+    reward_file_name        = "rewards.png"     #
+    clear                   = True              # whether to clear the results directory before running
 
 
 class PPOAgent1Params:
     """
     Contains all of the hyper-parameters specific to PPO agent 1
     """
+    agent_number            = 1         # the unique identifier for the agent
     alpha                   = 0.0003    #
     epochs                  = 4         #
     batch_size              = 5         #
@@ -93,6 +96,23 @@ class PPOAgent2Params:
     """
     Contains all of the hyper-parameters specific to PPO agent 2
     """
+    agent_number            = 2         # the unique identifier for the agent
+    alpha                   = 0.0003    #
+    epochs                  = 4         #
+    batch_size              = 5         #
+    gae_lambda              = 0.95      #
+    policy_clip             = 0.2       #
+    gamma                   = 0.99      #
+    X                       = 2e6       # initial inventory for the simulation
+    risk_aversion           = 1e-6      # risk aversion parameter
+    D                       = 7         # number of previous time instances to consider in the observation space
+
+
+class PPOAgent3Params:
+    """
+    Contains all of the hyper-parameters specific to PPO agent 3
+    """
+    agent_number            = 3         # the unique identifier for the agent
     alpha                   = 0.0003    #
     epochs                  = 4         #
     batch_size              = 5         #

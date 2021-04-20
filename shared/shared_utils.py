@@ -5,6 +5,7 @@ import os
 import shutil
 import matplotlib.pyplot as plt
 
+
 def sample_Xi(mu=0, sigma=1):
     """
     Samples the normal distribution
@@ -39,7 +40,14 @@ def delete_files_in_folder(folder):
             print('Failed to delete %s. Reason: %s' % (file_path, e))
 
 
-def plot_learning_curve(rewards, moving_average_length, figure_file):
+def plot_rewards(rewards, moving_average_length, figure_file):
+    """
+    Plots the reward as a function of the episode
+    :param rewards: np.array
+    :param moving_average_length: integer
+    :param figure_file: string
+    :return: None
+    """
     rewards_ma = np.zeros(len(rewards))
     for i in range(len(rewards_ma)):
         rewards_ma[i] = np.mean(rewards[max(0, i-moving_average_length):(i+1)])
@@ -63,3 +71,4 @@ def copy_attributes(copy_from, copy_to):
         if "__" in n:
             continue
         setattr(copy_to, n, v)
+

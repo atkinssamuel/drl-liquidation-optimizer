@@ -1,68 +1,24 @@
 import numpy as np
 
+from ppo.src.utils import build_simulation_gif, plot_multi_agent_rewards
 from shared.constants import PPODirectories
-from shared.shared_utils import plot_learning_curve
-
-
-def train_ppo(agent, env, episodes=500, update_frequency=20, moving_average_length=50, checkpoint_frequency=20,
-              reward_file_name="rewards.png", discrete=False):
-
-    best_reward_average = env.reward_range[0]
-    total_rewards = []
-
-    learn_iterations = 0
-    n_steps = 0
-
-    for i in range(episodes):
-        observation = env.reset()
-        done = False
-        total_reward = 0
-        while not done:
-            action, prob, val = agent.choose_action(observation)
-            observation_, reward, done, info = env.step(action)
-            n_steps += 1
-            total_reward += reward
-            agent.remember(observation, action, prob, val, reward, done)
-
-            if n_steps % update_frequency == 0:
-                agent.learn()
-                learn_iterations += 1
-
-            observation = observation_
-        total_rewards.append(total_reward)
-        average_reward = np.mean(total_rewards[-moving_average_length:])
-
-        checkpoint_message = f"Episode {i}, Reward = {total_reward}, " \
-                             f"{moving_average_length}-Episode Average Reward = {average_reward}, " \
-                             f"Time Steps = {n_steps}, " \
-                             f"Learning Steps = {learn_iterations}"
-
-        if average_reward > best_reward_average:
-            print(f"{checkpoint_message} (saving new optimal model)")
-            best_reward_average = average_reward
-            env.render()
-            agent.save_models()
-
-        if i % checkpoint_frequency == 0:
-            print(checkpoint_message)
-
-    if discrete:
-        reward_file = PPODirectories.discrete_rewards + reward_file_name
-    else:
-        reward_file = PPODirectories.rewards + reward_file_name
-
-    plot_learning_curve(total_rewards, moving_average_length, reward_file)
-
-    return best_reward_average
 
 
 def train_multi_agent_ppo(*agents, env=None, ppo_training_params=None):
+    """
+    Trains multiple PPO agents
+    :param agents: multiple agent parameters
+    :param env: environment object
+    :param ppo_training_params: training parameter object
+    :return: None
+    """
     num_agents = len(agents)
-    rewards = np.zeros(shape=(num_agents, ppo_training_params.episodes))
-    total_rewards = np.zeros(shape=num_agents)
+    total_rewards = np.zeros(shape=(num_agents, ppo_training_params.episodes))
 
     learn_iterations = 0
     n_steps = 0
+
+    filenames = []
 
     for i in range(ppo_training_params.episodes):
         observation = env.reset()
@@ -115,8 +71,7 @@ def train_multi_agent_ppo(*agents, env=None, ppo_training_params=None):
 
                 agent.remember(agent_observation, action, probability, value, reward, done)
 
-                rewards[j][i] = reward
-                total_rewards[j] += reward
+                total_rewards[j][i] += reward
                 observation_index = next_observation_index
 
             observation = observation_
@@ -127,11 +82,14 @@ def train_multi_agent_ppo(*agents, env=None, ppo_training_params=None):
                     learn_iterations += 1
 
         if i % ppo_training_params.checkpoint_frequency == 0:
-            spacing_index = 0
-            spacing_increment = 40
-            spacing_index += spacing_increment
             print(f"Episode {i}/{ppo_training_params.episodes}:" + " " * (6-len(str(i))), end="")
             for w in range(num_agents):
-                print('Reward for Agent {0} = {1:14,.2f}    '.format(w+1, round(rewards[w][i], 2)), end= "")
+                agents[w].save_models()
+                print('Reward for Agent {0} = {1:15,.2f}    '.format(w+1, round(total_rewards[w][i], 2)), end= "")
             print("")
+            filenames.append(env.render(agents, i))
+
+    plot_multi_agent_rewards(total_rewards, PPODirectories.results + ppo_training_params.reward_file_name)
+    build_simulation_gif(filenames)
+
     return

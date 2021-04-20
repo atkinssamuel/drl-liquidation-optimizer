@@ -5,7 +5,7 @@ from shared.constants import PPODirectories
 
 
 class Actor(torch.nn.Module):
-    def __init__(self, input_dims, alpha, fc1_dims=256, fc2_dims=256):
+    def __init__(self, input_dims, alpha, fc1_dims=256, fc2_dims=256, agent_number=1):
         super(Actor, self).__init__()
 
         self.base = torch.nn.Sequential(
@@ -24,7 +24,7 @@ class Actor(torch.nn.Module):
         )
         self.value = torch.nn.Linear(fc2_dims, 1)
 
-        self.checkpoint_file = os.path.join(PPODirectories.models, 'ppo_actor')
+        self.checkpoint_file = os.path.join(PPODirectories.models, f'agent_{agent_number}_actor')
         self.optimizer = torch.optim.Adam(self.parameters(), lr=alpha)
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.to(self.device)
@@ -41,10 +41,10 @@ class Actor(torch.nn.Module):
 
 
 class Critic(torch.nn.Module):
-    def __init__(self, input_dims, alpha, fc1_dims=256, fc2_dims=256):
+    def __init__(self, input_dims, alpha, fc1_dims=256, fc2_dims=256, agent_number=1):
         super(Critic, self).__init__()
 
-        self.checkpoint_file = os.path.join(PPODirectories.models, 'ppo_critic')
+        self.checkpoint_file = os.path.join(PPODirectories.models, f'agent_{agent_number}_critic')
         self.critic = torch.nn.Sequential(
             torch.nn.Linear(input_dims, fc1_dims),
             torch.nn.ReLU(),

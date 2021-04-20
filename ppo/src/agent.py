@@ -9,7 +9,12 @@ from shared.shared_utils import copy_attributes, ind
 
 class PPOAgent:
     def __init__(self, agent_args_object, env=None):
-
+        """
+        Initializes the agent by copying all of the parameters in the initialization object as well as the simulation
+        arrays
+        :param agent_args_object: object
+        :param env: environment object
+        """
         copy_attributes(agent_args_object, self)
 
         self.N = env.N
@@ -30,11 +35,15 @@ class PPOAgent:
 
         self.input_dims = self.D + 3
 
-        self.actor = Actor(self.input_dims, self.alpha)
-        self.critic = Critic(self.input_dims, self.alpha)
+        self.actor = Actor(self.input_dims, self.alpha, agent_number=self.agent_number)
+        self.critic = Critic(self.input_dims, self.alpha, agent_number=self.agent_number)
         self.memory = PPOMemory(self.batch_size)
 
     def reset(self):
+        """
+        Resets the agent's inventory, share, and revenue processes
+        :return: None
+        """
         # inventory
         self.x = np.zeros(shape=(self.N,))
         self.x[0] = self.X
@@ -66,6 +75,7 @@ class PPOAgent:
         C_k = C_k-1 + new_revenue
 
         :param k: k + 1
+        :param new_revenue: float: the revenue earned at k-1 (dR/dt)
         :return: None
         """
         self.R[ind(k)] = self.R[ind(k) - 1] + new_revenue
@@ -81,8 +91,8 @@ class PPOAgent:
         """
         self.L -= 1 / self.N
 
-    def remember(self, state, action, probs, vals, reward, done):
-        self.memory.store_memory(state, action, probs, vals, reward, done)
+    def remember(self, state, action, probabilities, values, reward, done):
+        self.memory.store_memory(state, action, probabilities, values, reward, done)
 
     def save_models(self):
         self.actor.save_checkpoint()
