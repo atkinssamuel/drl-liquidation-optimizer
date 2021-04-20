@@ -68,7 +68,7 @@ class PPOTrainingParams:
     """
     Contains all of the hyper-parameters for the environment used by the PPO algorithm
     """
-    episodes                = 500               #
+    episodes                = 200               #
     update_frequency        = 20                #
     moving_average_length   = 5                 #
     checkpoint_frequency    = 5                 #
@@ -88,7 +88,7 @@ class PPOAgent1Params:
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
     X                       = 3e5       # initial inventory for the simulation
-    risk_aversion           = 1e-8      # risk aversion parameter
+    risk_aversion           = 1e-6      # risk aversion parameter
     D                       = 5         # number of previous time instances to consider in the observation space
 
 

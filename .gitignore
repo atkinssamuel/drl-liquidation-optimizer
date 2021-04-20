@@ -131,5 +131,7 @@ dmypy.json
 # custom .gitignore's
 .idea/
 tmp/
+HIDDEN.md
+
 # powerpoint lock files
 ~$**

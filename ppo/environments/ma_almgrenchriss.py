@@ -75,6 +75,9 @@ class MultiAgentAlmgrenChriss:
         self.tau = self.T / self.N  # 1.0
         self.sigma = daily_volatility * self.initial_market_price  # 0.3794
         self.alpha = arr / yearly_trading_days * self.initial_market_price  # 0.02
+
+        self.alpha = 0
+
         self.epsilon = bid_ask / 2  # 0.0625
         self.eta = bid_ask / (0.01 * daily_trading_volume)  # 2.5e-06
         self.gamma = bid_ask / (0.1 * daily_trading_volume)  # 2.5e-07
@@ -247,7 +250,8 @@ class MultiAgentAlmgrenChriss:
         :return: None
         """
         # S_0(t) = S_0 + sigma * W(t) + drift
-        self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() + self.alpha
+        self.S[ind(self.k)] = self.S[ind(self.k)-1] + self.sigma * np.sqrt(self.tau) * sample_Xi() \
+                              + self.alpha * self.tau
 
         # S{X1, ..., XN}(t) = S_0(t) + gamma * total permanent price impact
         self.S[ind(self.k)] = self.S[ind(self.k)] + self.gamma * total_permanent_price_impact
@@ -277,22 +281,3 @@ class MultiAgentAlmgrenChriss:
         kappa_2_tilde = self.lam * self.sigma ** 2 / eta_tilde
         kappa = np.arccosh(kappa_2_tilde * self.tau ** 2 / 2 + 1) / self.tau
         return kappa
-
-    def compute_h(self, n_k):
-        """
-        Computes and returns the h value for the specified input, n_k
-
-        h(n_k/tau) = epsilon * sgn(n_k) + eta / tau * n_k
-
-        :param: n_k: # of shares sold from k-1 to k
-        :return: float
-        """
-        return self.epsilon * np.sign(n_k) + self.eta / self.tau * n_k
-
-    def compute_g(self, n_k):
-        """
-        Computes and returns the g value (permanent price impact) for the specified input, n_k
-        :param n_k: # of shares sold from k-1 to k
-        :return: float
-        """
-        return self.gamma * n_k / self.tau
