@@ -132,8 +132,7 @@ class PPOAgent:
                 discount = 1
                 a_t = 0
                 for k in range(t, len(reward_arr) - 1):
-                    a_t += discount * (reward_arr[k] + self.gamma * values[k + 1] * \
-                                       (1 - int(dones_arr[k])) - values[k])
+                    a_t += discount * (reward_arr[k] + self.gamma * values[k + 1] * (1 - int(dones_arr[k])) - values[k])
                     discount *= self.gamma * self.gae_lambda
                 advantage[t] = a_t
             advantage = torch.tensor(advantage).to(self.actor.device)
@@ -141,7 +140,7 @@ class PPOAgent:
             values = torch.tensor(values).to(self.actor.device)
             for batch in batches:
                 states = torch.tensor(state_arr[batch], dtype=torch.float).to(self.actor.device)
-                old_probs = torch.tensor(old_prob_arr[batch]).to(self.actor.device)
+                old_probabilities = torch.tensor(old_prob_arr[batch]).to(self.actor.device)
                 action = torch.tensor(action_arr[batch]).to(self.actor.device)
 
                 mu, var, _ = self.actor(states)
@@ -150,12 +149,12 @@ class PPOAgent:
                 p2 = - torch.log(torch.sqrt(2 * math.pi * var))
                 new_probabilities = p1 + p2
 
-                prob_ratio = new_probabilities.exp() / old_probs.exp()
+                prob_ratio = new_probabilities.exp() / old_probabilities.exp()
 
-                weighted_probs = advantage[batch] * prob_ratio
-                weighted_clipped_probs = torch.clamp(prob_ratio, 1 - self.policy_clip,
+                weighted_probabilities = advantage[batch] * prob_ratio
+                weighted_clipped_probabilities = torch.clamp(prob_ratio, 1 - self.policy_clip,
                                                      1 + self.policy_clip) * advantage[batch]
-                actor_loss = -torch.min(weighted_probs, weighted_clipped_probs).mean()
+                actor_loss = -torch.min(weighted_probabilities, weighted_clipped_probabilities).mean()
 
                 returns = advantage[batch] + values[batch]
                 critic_value = torch.squeeze(self.critic(states))
