@@ -68,7 +68,7 @@ class MultiAgentAlmgrenChriss:
         yearly_trading_days = 250
         self.T = 60
         self.N = 60
-        self.lam = 1e-9
+        self.lam = 1e-5
 
         bid_ask = 1 / 8
         daily_volatility = volatility / np.sqrt(yearly_trading_days)  # 0.007589
