@@ -53,7 +53,7 @@ class PPODirectories:
     """
     Contains all of the directories for the PPO implementation
     """
-    ppo = "ppo/"
+    ppo = "../ppo/"
     src = ppo + "src/"
     results = ppo + "results/"
     rewards = results + "rewards/"
@@ -66,7 +66,7 @@ class PPODirectories:
 
 class PPOTrainingParams:
     """
-    Contains all of the hyper-parameters for the environment used by the PPO algorithm
+    Contains all of the hyper-parameters for the training loop
     """
     episodes                = 100               #
     update_frequency        = 20                #
@@ -74,6 +74,14 @@ class PPOTrainingParams:
     checkpoint_frequency    = 5                 #
     reward_file_name        = "rewards.png"     #
     clear                   = True              # whether to clear the results directory before running
+    gif                     = False             # whether to produce gif of simulation
+
+
+class PPOEnvParams:
+    """
+    Contains all of hyper-parameters for the environment
+    """
+    lam                     = 1e-4              # controls the temporary price impact factor
 
 
 class PPOAgent1Params:
@@ -88,7 +96,7 @@ class PPOAgent1Params:
     policy_clip             = 0.2       #
     gamma                   = 0.99      #
     X                       = 3e5       # initial inventory for the simulation
-    risk_aversion           = 1e-2      # risk aversion parameter
+    risk_aversion           = 1e-6      # risk aversion parameter
     D                       = 5         # number of previous time instances to consider in the observation space
 
 

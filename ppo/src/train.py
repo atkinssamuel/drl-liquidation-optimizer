@@ -90,6 +90,8 @@ def train_multi_agent_ppo(*agents, env=None, ppo_training_params=None):
             filenames.append(env.render(agents, i))
 
     plot_multi_agent_rewards(total_rewards, PPODirectories.results + ppo_training_params.reward_file_name)
-    build_simulation_gif(filenames)
+
+    if ppo_training_params.gif:
+        build_simulation_gif(filenames)
 
     return

@@ -5,7 +5,7 @@ import matplotlib.gridspec as gridspec
 from gym.spaces import Box
 
 from shared.constants import PPODirectories
-from shared.shared_utils import ind, sample_Xi
+from shared.shared_utils import ind, sample_Xi, copy_attributes
 
 
 class MultiAgentAlmgrenChriss:
@@ -44,18 +44,22 @@ class MultiAgentAlmgrenChriss:
     - To go from k to k + 1, we liquidate n_k shares
         - n_k is the number of shares liquidated from k-1 to k
     """
-    def __init__(self, *D):
-        self.num_agents = len(D)
+    def __init__(self, *agents, env_params=None):
+
+        copy_attributes(env_params, self)
+
+        self.num_agents = len(agents)
         # action space is continuous and 1-dimensional for a single agent, # agents-dimensional for multi-agent
         self.action_space = Box(low=0, high=1, shape=(self.num_agents,), dtype=np.float32)
 
         # observation space for state-space formulation from MADRL paper is D + 3
-        total_D = sum(D)
+        D_list = [agent.D for agent in agents]
+        total_D = sum(D_list)
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=((total_D+3*self.num_agents),), dtype=np.float32)
 
         # initialize the state to [0, 0, ..., 0] (length D+1) + [1, 1]
-        for i in range(len(D)):
-            D_state = np.hstack((np.zeros(shape=(D[i]+1)), [1, 1]))
+        for i in range(len(D_list)):
+            D_state = np.hstack((np.zeros(shape=(D_list[i]+1)), [1, 1]))
             if i == 0:
                 self.state = D_state
             else:
@@ -68,7 +72,6 @@ class MultiAgentAlmgrenChriss:
         yearly_trading_days = 250
         self.T = 60
         self.N = 60
-        self.lam = 1e-5
 
         bid_ask = 1 / 8
         daily_volatility = volatility / np.sqrt(yearly_trading_days)  # 0.007589
@@ -104,11 +107,12 @@ class MultiAgentAlmgrenChriss:
                                                                'infos': [info_1, info_2, ...]}
         """
         dones = multi_agent_action_dict['dones']
+        num_agents = len(dones)
         # for each agent
         observation_index = 0
         total_permanent_price_impact = 0
         total_temporary_price_impact = 0
-        for i in range(self.num_agents):
+        for i in range(num_agents):
             agent = multi_agent_action_dict['agents'][i]
 
             if dones[i]:
@@ -134,7 +138,7 @@ class MultiAgentAlmgrenChriss:
         self.step_price(total_permanent_price_impact=total_permanent_price_impact,
                         total_temporary_price_impact=total_temporary_price_impact)
 
-        for i in range(self.num_agents):
+        for i in range(num_agents):
             if dones[i]:
                 continue
             agent = multi_agent_action_dict['agents'][i]
@@ -153,7 +157,7 @@ class MultiAgentAlmgrenChriss:
             'infos': [{} for _ in range(self.num_agents)]
         }
 
-        for i in range(self.num_agents):
+        for i in range(num_agents):
             if dones[i]:
                 multi_agent_step_dict['dones'][i] = True
                 continue

@@ -102,13 +102,17 @@ class PPOAgent:
         self.actor.load_checkpoint()
         self.critic.load_checkpoint()
 
-    def choose_action(self, observation):
+    def choose_action(self, observation, noise=True):
         state = torch.tensor([observation], dtype=torch.float).to(self.actor.device)
 
         mu, var, _ = self.actor(state)
 
         sigma = torch.sqrt(var)
-        action = torch.normal(mu, sigma)
+
+        if not noise:
+            action = mu
+        else:
+            action = torch.normal(mu, sigma)
         action = torch.clamp(action, 0, 1)
 
         p1 = -((mu - action) ** 2) / (2 * var.clamp(min=1e-3))
