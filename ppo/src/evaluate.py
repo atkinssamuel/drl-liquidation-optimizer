@@ -13,14 +13,24 @@ def get_sa_analytical_solution(agent, env=None):
     s2(t) = sinh((T * sqrt(gamma^2 + 12 * alpha * lam * sigma^2) / (6 * lam))
 
     delta(t) = (x_1(0) - x_2(0)) exp (gamma * t / (2 * lam)) * s3 / s4
-    s3(t) = 
+    s3(t) = sinh((T - t) * sqrt(gamma^2 + 4 * alpha * lam * sigma^2) / (2 * lam))
+    s4(t) = sinh(T * sqrt(gamma^2 + 4 * alpha * lam * sigma^2) / (2 * lam))
+
+
+    X_1^*(t) = 1 / 2 * (sigma(t) + delta(t))
+    X_2^*(t) = 1 / 2 * (sigma(t) - delta(t))
 
     :return: np.array inventory process
     """
-
-
     t = np.linspace(0, env.T, env.N)
-    return agent.x[0] * np.sinh(env.kappa * (env.T - t)) / np.sinh(env.kappa * env.T)
+
+    eta_tilde = env.eta * (1 - env.gamma * env.tau / (2 * env.eta))
+    kappa_2_tilde = agent.risk_aversion * env.sigma ** 2 / eta_tilde
+    kappa = np.arccosh(kappa_2_tilde * env.tau ** 2 / 2 + 1) / env.tau
+
+    x_analytical = agent.x[0] * np.sinh(kappa * (env.T - t)) / np.sinh(kappa * env.T)
+
+    return x_analytical
 
 
 def evaluate_agents(*agents, env=None):

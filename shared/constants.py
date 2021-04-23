@@ -81,7 +81,7 @@ class PPOEnvParams:
     """
     Contains all of hyper-parameters for the environment
     """
-    lam                     = 1e-4              # controls the temporary price impact factor
+    lam                     = 1e-9              # controls the temporary price impact factor
 
 
 class PPOAgent1Params:
